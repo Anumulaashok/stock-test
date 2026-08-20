@@ -55,13 +55,19 @@ class LocalLLMProvider(LLMProvider):
     async def generate(
         self,
         prompt: str,
+        system_prompt: str | None = None,
         max_tokens: int | None = None,
         enable_thinking: bool | None = None,
         **kwargs: Any,
     ) -> str:
+        messages = []
+        if system_prompt:
+            messages.append({"role": "system", "content": system_prompt})
+        messages.append({"role": "user", "content": prompt})
+
         payload: dict[str, Any] = {
             "model": self._model,
-            "messages": [{"role": "user", "content": prompt}],
+            "messages": messages,
             "chat_template_kwargs": {
                 "enable_thinking": (
                     self._enable_thinking if enable_thinking is None else enable_thinking

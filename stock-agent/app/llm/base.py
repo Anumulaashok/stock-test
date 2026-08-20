@@ -21,8 +21,16 @@ class LLMProvider(ABC):
     """Abstract interface for a text-generation backend."""
 
     @abstractmethod
-    async def generate(self, prompt: str, **kwargs: Any) -> str:
-        """Generate free-form text for the given prompt."""
+    async def generate(
+        self, prompt: str, system_prompt: str | None = None, **kwargs: Any
+    ) -> str:
+        """Generate free-form text for the given prompt.
+
+        `system_prompt`, when given, is sent as a separate system-role
+        message ahead of the user prompt — the standard way to separate
+        role/instruction framing from task content without inventing a
+        second LLM client or a bespoke wire format.
+        """
         raise NotImplementedError
 
     @abstractmethod

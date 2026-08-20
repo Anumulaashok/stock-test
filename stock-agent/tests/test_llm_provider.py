@@ -78,6 +78,37 @@ async def test_generate_sends_bearer_token_and_chat_template_kwargs():
 
 @pytest.mark.asyncio
 @respx.mock
+async def test_generate_sends_system_prompt_as_separate_message():
+    provider = LocalLLMProvider(base_url="http://test-llm:8080/v1", model="qwen3-8b")
+    route = respx.post("http://test-llm:8080/v1/chat/completions").mock(
+        return_value=httpx.Response(200, json={"choices": [{"message": {"content": "hello"}}]})
+    )
+
+    await provider.generate("do the task", system_prompt="you are an analyst")
+
+    body = json.loads(route.calls.last.request.content)
+    assert body["messages"] == [
+        {"role": "system", "content": "you are an analyst"},
+        {"role": "user", "content": "do the task"},
+    ]
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_generate_without_system_prompt_sends_only_user_message():
+    provider = LocalLLMProvider(base_url="http://test-llm:8080/v1", model="qwen3-8b")
+    route = respx.post("http://test-llm:8080/v1/chat/completions").mock(
+        return_value=httpx.Response(200, json={"choices": [{"message": {"content": "hello"}}]})
+    )
+
+    await provider.generate("do the task")
+
+    body = json.loads(route.calls.last.request.content)
+    assert body["messages"] == [{"role": "user", "content": "do the task"}]
+
+
+@pytest.mark.asyncio
+@respx.mock
 async def test_generate_raises_on_timeout():
     provider = LocalLLMProvider(base_url="http://test-llm:8080/v1", model="test-model")
     respx.post("http://test-llm:8080/v1/chat/completions").mock(

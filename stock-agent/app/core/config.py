@@ -32,7 +32,10 @@ class Settings(BaseSettings):
     local_llm_model: str | None = Field(default=None)
     local_llm_api_key: str | None = Field(default=None)
     local_llm_connect_timeout_seconds: float = Field(default=5.0)
-    local_llm_timeout_seconds: float = Field(default=30.0)
+    # 120s default: the reference CPU-only Qwen3-8B server generates at
+    # roughly 5-8 tokens/sec, so a several-hundred-token structured
+    # analyst response (Step 5) can take well over the old 30s default.
+    local_llm_timeout_seconds: float = Field(default=120.0)
     local_llm_enable_thinking: bool = Field(default=False)
 
     # Database

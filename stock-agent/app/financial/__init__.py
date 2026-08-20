@@ -1,5 +1,6 @@
-"""Placeholder package for financial.
+"""Deterministic financial calculation engine.
 
-Not implemented yet. This package is reserved for a future step of the
-project and intentionally contains no functionality at this stage.
+Pure calculation functions live in `calculations.py`; `service.py`
+orchestrates them into a `FinancialAnalysisResult`. Nothing in this
+package performs I/O, and it never uses an LLM for numeric results.
 """

@@ -12,6 +12,10 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/health", tags=["health"])
 
+# Minimal prompt used only to verify end-to-end connectivity to the
+# remote LLM server (DNS/network, auth, and a valid completion).
+LLM_CONNECTIVITY_TEST_PROMPT = "Reply with exactly: Remote AI connection works."
+
 
 @router.get("")
 async def health() -> dict:
@@ -32,14 +36,25 @@ async def health_llm(settings: Settings = Depends(get_settings)) -> dict:
         logger.warning("LLM provider misconfigured: %s", exc)
         return {"status": "misconfigured", "detail": str(exc)}
 
+    # Enable_thinking is forced off here regardless of configuration —
+    # this endpoint only needs to confirm connectivity, not reasoning.
     try:
-        reachable = await provider.health_check()
+        content = await provider.generate(
+            LLM_CONNECTIVITY_TEST_PROMPT,
+            max_tokens=32,
+            enable_thinking=False,
+        )
     except LLMProviderError as exc:
-        logger.error("LLM health check raised an error: %s", exc)
-        return {"status": "unreachable", "detail": str(exc)}
+        logger.error("LLM connectivity test failed: %s", exc)
+        return {
+            "status": "unreachable",
+            "provider": settings.llm_provider,
+            "model": settings.local_llm_model,
+        }
 
     return {
-        "status": "ok" if reachable else "unreachable",
+        "status": "ok",
         "provider": settings.llm_provider,
         "model": settings.local_llm_model,
+        "response": content,
     }

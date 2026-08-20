@@ -1,3 +1,5 @@
+import json
+
 import httpx
 import pytest
 import respx
@@ -51,6 +53,31 @@ async def test_generate_returns_message_content():
 
 @pytest.mark.asyncio
 @respx.mock
+async def test_generate_sends_bearer_token_and_chat_template_kwargs():
+    provider = LocalLLMProvider(
+        base_url="http://test-llm:8080/v1",
+        model="qwen3-8b",
+        api_key="secret-key",
+        enable_thinking=False,
+    )
+    route = respx.post("http://test-llm:8080/v1/chat/completions").mock(
+        return_value=httpx.Response(
+            200, json={"choices": [{"message": {"content": "hello"}}]}
+        )
+    )
+
+    await provider.generate("hi", max_tokens=32)
+
+    request = route.calls.last.request
+    assert request.headers["Authorization"] == "Bearer secret-key"
+    body = json.loads(request.content)
+    assert body["model"] == "qwen3-8b"
+    assert body["max_tokens"] == 32
+    assert body["chat_template_kwargs"] == {"enable_thinking": False}
+
+
+@pytest.mark.asyncio
+@respx.mock
 async def test_generate_raises_on_timeout():
     provider = LocalLLMProvider(base_url="http://test-llm:8080/v1", model="test-model")
     respx.post("http://test-llm:8080/v1/chat/completions").mock(
@@ -63,9 +90,37 @@ async def test_generate_raises_on_timeout():
 
 @pytest.mark.asyncio
 @respx.mock
+async def test_generate_raises_on_unauthorized():
+    provider = LocalLLMProvider(base_url="http://test-llm:8080/v1", model="test-model")
+    respx.post("http://test-llm:8080/v1/chat/completions").mock(
+        return_value=httpx.Response(401, json={"error": "unauthorized"})
+    )
+
+    with pytest.raises(LLMProviderError):
+        await provider.generate("hi")
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_generate_raises_on_empty_content():
+    provider = LocalLLMProvider(base_url="http://test-llm:8080/v1", model="test-model")
+    respx.post("http://test-llm:8080/v1/chat/completions").mock(
+        return_value=httpx.Response(200, json={"choices": [{"message": {"content": ""}}]})
+    )
+
+    with pytest.raises(LLMProviderError):
+        await provider.generate("hi")
+
+
+@pytest.mark.asyncio
+@respx.mock
 async def test_health_check_true_when_reachable():
     provider = LocalLLMProvider(base_url="http://test-llm:8080/v1", model="test-model")
-    respx.get("http://test-llm:8080/v1/models").mock(return_value=httpx.Response(200, json={}))
+    respx.post("http://test-llm:8080/v1/chat/completions").mock(
+        return_value=httpx.Response(
+            200, json={"choices": [{"message": {"content": "Remote AI connection works."}}]}
+        )
+    )
 
     assert await provider.health_check() is True
 
@@ -74,7 +129,7 @@ async def test_health_check_true_when_reachable():
 @respx.mock
 async def test_health_check_false_when_server_unavailable():
     provider = LocalLLMProvider(base_url="http://test-llm:8080/v1", model="test-model")
-    respx.get("http://test-llm:8080/v1/models").mock(
+    respx.post("http://test-llm:8080/v1/chat/completions").mock(
         side_effect=httpx.ConnectError("connection refused")
     )
 

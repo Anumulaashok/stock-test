@@ -42,20 +42,47 @@ touching callers.
 
 ## Configuring the local LLM
 
+The "local" LLM is not required to run on this machine — it is a
+remote, OpenAI-compatible server (e.g. Qwen3-8B served on another host
+on your network):
+
+```
+Development machine --HTTP--> {LOCAL_LLM_BASE_URL} --> Qwen3-8B
+```
+
 Copy `.env.example` to `.env` and set:
 
 ```
 LLM_PROVIDER=local
 LOCAL_LLM_BASE_URL=http://YOUR_SERVER_HOST:PORT/v1
 LOCAL_LLM_MODEL=your-model-name
-LOCAL_LLM_API_KEY=            # optional, if your server requires one
+LOCAL_LLM_API_KEY=                        # required if your server enforces one
+LOCAL_LLM_CONNECT_TIMEOUT_SECONDS=5
 LOCAL_LLM_TIMEOUT_SECONDS=30
+LOCAL_LLM_ENABLE_THINKING=false
 ```
 
-`LOCAL_LLM_BASE_URL` must point to an OpenAI-compatible API root (i.e.
-`{base_url}/chat/completions` and `{base_url}/models` must resolve).
+`LOCAL_LLM_BASE_URL` must point to an OpenAI-compatible API root, i.e.
+`{base_url}/chat/completions` must resolve. Requests are sent as:
+
+```
+POST {LOCAL_LLM_BASE_URL}/chat/completions
+Authorization: Bearer ${LOCAL_LLM_API_KEY}
+
+{
+  "model": "...",
+  "messages": [{"role": "user", "content": "..."}],
+  "chat_template_kwargs": {"enable_thinking": false}
+}
+```
+
+`enable_thinking` is read from `LOCAL_LLM_ENABLE_THINKING` by default but
+can be overridden per call — the `/health/llm` connectivity check always
+forces it to `false`, since it only needs a fast, verifiable reply.
+
 No IP addresses, model names, or credentials are hardcoded anywhere in
-the codebase.
+the codebase, and the API key is never included in logs, error
+messages, or API responses.
 
 ## Running the API
 
@@ -69,9 +96,12 @@ uvicorn app.main:app --reload
 Endpoints:
 
 - `GET /health` — process liveness check.
-- `GET /health/llm` — attempts to reach the configured local LLM server
-  and reports `ok`, `unreachable`, or `misconfigured`. Never returns
-  secrets.
+- `GET /health/llm` — sends a minimal chat completion request ("Reply
+  with exactly: Remote AI connection works.") to the configured remote
+  LLM server to verify DNS/network reachability, authentication, and a
+  valid completion response. Reports `ok` (with the model's reply),
+  `unreachable`, or `misconfigured`. Never returns the API key or any
+  other secret.
 
 Optionally, start PostgreSQL via Docker Compose (not required to hold
 real data yet):

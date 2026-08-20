@@ -21,7 +21,9 @@ def get_llm_provider(settings: Settings) -> LLMProvider:
             base_url=settings.local_llm_base_url,
             model=settings.local_llm_model,
             api_key=settings.local_llm_api_key,
+            connect_timeout_seconds=settings.local_llm_connect_timeout_seconds,
             timeout_seconds=settings.local_llm_timeout_seconds,
+            enable_thinking=settings.local_llm_enable_thinking,
         )
 
     raise ValueError(f"Unsupported LLM_PROVIDER: {settings.llm_provider!r}")

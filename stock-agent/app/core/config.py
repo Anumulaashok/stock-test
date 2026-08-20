@@ -31,7 +31,9 @@ class Settings(BaseSettings):
     local_llm_base_url: str | None = Field(default=None)
     local_llm_model: str | None = Field(default=None)
     local_llm_api_key: str | None = Field(default=None)
+    local_llm_connect_timeout_seconds: float = Field(default=5.0)
     local_llm_timeout_seconds: float = Field(default=30.0)
+    local_llm_enable_thinking: bool = Field(default=False)
 
     # Database
     database_url: str | None = Field(default=None)

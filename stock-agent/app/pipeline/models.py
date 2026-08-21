@@ -14,6 +14,7 @@ from pydantic import BaseModel, Field
 from app.models.analyst import AnalystResult
 from app.models.financial_results import FinancialAnalysisResult
 from app.models.financial_statements import CompanyFinancials
+from app.models.report import InvestmentResearchReport
 from app.models.research import ResearchResult
 from app.models.scoring import ScoringResult
 from app.models.valuation import ValuationRange
@@ -62,6 +63,11 @@ class ValuationAssumptions(BaseModel):
     target_pfcf: Decimal | None = None
 
     research: ResearchOptions = Field(default_factory=ResearchOptions)
+    include_report: bool = Field(
+        default=False,
+        description="If true, the API attaches a structured InvestmentResearchReport "
+        "(Step 9) built from this result — the pipeline itself is unaware of reports.",
+    )
 
 
 class AnalysisRequest(ValuationAssumptions):
@@ -118,5 +124,6 @@ class CombinedAnalysisResult(BaseModel):
     scoring: ScoringResult | None = None
     research: ResearchResult | None = None
     analyst: AnalystResult | None = None
+    report: InvestmentResearchReport | None = None
     warnings: list[str] = Field(default_factory=list)
     metadata: ExecutionMetadata | None = None

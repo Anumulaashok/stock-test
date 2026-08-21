@@ -25,6 +25,7 @@ from app.pipeline.models import (
     TickerAnalysisRequest,
 )
 from app.pipeline.service import AnalysisPipelineService
+from app.reporting.service import ReportService
 from app.research.factory import get_research_provider
 from app.research.service import ResearchService
 from app.scoring.service import ScoringService
@@ -85,12 +86,25 @@ def _build_pipeline(settings: Settings) -> AnalysisPipelineService:
     )
 
 
+def _with_report_if_requested(
+    result: CombinedAnalysisResult, include_report: bool
+) -> CombinedAnalysisResult:
+    """Step 9: report generation is pure post-processing over an already
+    -complete `CombinedAnalysisResult` — no pipeline stage needs to know
+    about it, and no analysis logic is duplicated here."""
+    if not include_report:
+        return result
+    report = ReportService().generate(result)
+    return result.model_copy(update={"report": report})
+
+
 @router.post("/analyze")
 async def analyze(
     request: AnalysisRequest, settings: Settings = Depends(get_settings)
 ) -> CombinedAnalysisResult:
     pipeline = _build_pipeline(settings)
-    return await pipeline.analyze(request)
+    result = await pipeline.analyze(request)
+    return _with_report_if_requested(result, request.include_report)
 
 
 @router.post("/analyze/ticker")
@@ -109,4 +123,5 @@ async def analyze_ticker(
 
     pipeline = _build_pipeline(settings)
     application_service = AnalysisApplicationService(FinancialDataService(provider), pipeline)
-    return await application_service.analyze_by_ticker(request)
+    result = await application_service.analyze_by_ticker(request)
+    return _with_report_if_requested(result, request.include_report)

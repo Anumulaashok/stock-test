@@ -1,0 +1,75 @@
+@import "tailwindcss";
+
+/* Design tokens for a professional financial-research terminal aesthetic:
+   neutral slate surfaces, a single restrained accent, monospace for
+   numeric data (tabular alignment, "terminal" feel), status colors used
+   sparingly and never as the sole signal (always paired with text/icon). */
+:root {
+  --color-bg: #f7f7f8;
+  --color-surface: #ffffff;
+  --color-surface-raised: #ffffff;
+  --color-border: #e2e2e6;
+  --color-border-strong: #c9c9d1;
+  --color-text: #1a1b23;
+  --color-text-muted: #5b5d6b;
+  --color-text-faint: #8b8d99;
+  --color-accent: #2952a3;
+  --color-accent-soft: #eaf0fb;
+
+  --color-status-critical: #b3261e;
+  --color-status-high: #b5540a;
+  --color-status-medium: #8a6d00;
+  --color-status-low: #3a6b35;
+  --color-status-info: #5b5d6b;
+  --color-status-positive: #1e7a4c;
+  --color-status-negative: #b3261e;
+
+  --font-sans: -apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, Roboto, sans-serif;
+  --font-mono: ui-monospace, 'SF Mono', 'Roboto Mono', Consolas, monospace;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --color-bg: #0e0f13;
+    --color-surface: #16171d;
+    --color-surface-raised: #1c1d25;
+    --color-border: #2a2b34;
+    --color-border-strong: #3b3c47;
+    --color-text: #e7e7ea;
+    --color-text-muted: #a3a5b3;
+    --color-text-faint: #6f7180;
+    --color-accent: #7fa6e8;
+    --color-accent-soft: #1b2740;
+
+    --color-status-critical: #f2857c;
+    --color-status-high: #f0a35c;
+    --color-status-medium: #e0c34a;
+    --color-status-low: #7fc27a;
+    --color-status-info: #a3a5b3;
+    --color-status-positive: #7fc27a;
+    --color-status-negative: #f2857c;
+  }
+}
+
+html {
+  color-scheme: light dark;
+}
+
+body {
+  margin: 0;
+  background: var(--color-bg);
+  color: var(--color-text);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+}
+
+.font-mono-nums {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Visible keyboard-focus ring everywhere, never relying on color alone. */
+:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+}

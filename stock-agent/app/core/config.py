@@ -38,17 +38,29 @@ class Settings(BaseSettings):
     local_llm_timeout_seconds: float = Field(default=120.0)
     local_llm_enable_thinking: bool = Field(default=False)
 
-    # External financial data provider. "fmp" (Financial Modeling Prep) is
-    # the only one implemented so far.
+    # External financial data provider SELECTION only — a provider
+    # identifier ("fmp", "indianapi"), never a URL. Each provider's own
+    # connection details live in its own namespaced settings below (e.g.
+    # FMP_*, INDIAN_API_*) so selecting one provider never requires
+    # configuring another. See `app/data/factory.py` for the registry.
     financial_data_provider: str = Field(default="fmp")
-    financial_data_api_key: str | None = Field(default=None)
+
+    # Financial Modeling Prep (fmp)
+    fmp_api_key: str | None = Field(default=None)
     # FMP's public API host — not a secret, but still overridable.
-    financial_data_base_url: str = Field(default="https://financialmodelingprep.com/stable")
-    financial_data_connect_timeout_seconds: float = Field(default=5.0)
-    financial_data_timeout_seconds: float = Field(default=15.0)
-    financial_data_max_retries: int = Field(default=2)
+    fmp_base_url: str = Field(default="https://financialmodelingprep.com/stable")
+    fmp_connect_timeout_seconds: float = Field(default=5.0)
+    fmp_timeout_seconds: float = Field(default=15.0)
+    fmp_max_retries: int = Field(default=2)
     # How many annual periods to request per statement type.
-    financial_data_annual_periods_limit: int = Field(default=5)
+    fmp_annual_periods_limit: int = Field(default=5)
+
+    # IndianAPI (indianapi) — stock.indianapi.in
+    indian_api_key: str | None = Field(default=None)
+    indian_api_base_url: str = Field(default="https://stock.indianapi.in")
+    indian_api_connect_timeout_seconds: float = Field(default=5.0)
+    indian_api_timeout_seconds: float = Field(default=15.0)
+    indian_api_max_retries: int = Field(default=2)
 
     # External research/market-context provider (Step 8). "finnhub" is the
     # only one implemented so far. Research is optional — the app runs

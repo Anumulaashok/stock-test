@@ -43,8 +43,8 @@ VALID_ANALYST_RESPONSE = {
 
 def _set_env(monkeypatch, fmp_key="fmp-secret-key", llm_configured=True):
     monkeypatch.setenv("FINANCIAL_DATA_PROVIDER", "fmp")
-    monkeypatch.setenv("FINANCIAL_DATA_BASE_URL", FMP_BASE)
-    monkeypatch.setenv("FINANCIAL_DATA_API_KEY", fmp_key)
+    monkeypatch.setenv("FMP_BASE_URL", FMP_BASE)
+    monkeypatch.setenv("FMP_API_KEY", fmp_key)
     if llm_configured:
         monkeypatch.setenv("LOCAL_LLM_BASE_URL", "http://test-llm:8080/v1")
         monkeypatch.setenv("LOCAL_LLM_MODEL", "qwen3-8b")
@@ -225,7 +225,7 @@ def test_response_never_leaks_stack_trace(monkeypatch):
 
 def test_financial_data_provider_misconfigured_returns_failed(monkeypatch):
     monkeypatch.setenv("FINANCIAL_DATA_PROVIDER", "fmp")
-    monkeypatch.setenv("FINANCIAL_DATA_API_KEY", "")
+    monkeypatch.setenv("FMP_API_KEY", "")
 
     get_settings.cache_clear()
     try:

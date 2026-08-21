@@ -14,6 +14,7 @@ from pydantic import BaseModel, Field
 
 from app.models.financial_results import FinancialAnalysisResult
 from app.models.financial_statements import CompanyFinancials
+from app.models.research import ResearchResult
 from app.models.scoring import ScoringResult
 from app.models.valuation import ValuationRange
 
@@ -60,11 +61,30 @@ class AnalystRiskContext(BaseModel):
     reason: str
 
 
+class AnalystResearchItemContext(BaseModel):
+    """Compact, analyst-facing shape of one `ResearchItem` — deliberately
+    smaller than the full domain model (no relevance score, no topic) to
+    keep the prompt small for the CPU-only reference LLM. Labeled
+    distinctly from financial/valuation/scoring fields in the prompt as
+    EXTERNAL RESEARCH CONTEXT, never as deterministic financial fact."""
+
+    id: str
+    title: str
+    publisher: str | None = None
+    published_at: str | None = None
+    url: str
+    summary: str | None = None
+    freshness: str = "unknown"
+
+
 class AnalystContext(BaseModel):
     """The complete, serializable input given to the LLM.
 
-    This is the *only* financial/valuation/scoring data the model ever
-    sees — it is built once, deterministically, by `app/analyst/context.py`.
+    This is the *only* financial/valuation/scoring/research data the
+    model ever sees — it is built once, deterministically, by
+    `app/analyst/context.py`. `research_items` is EXTERNAL, QUALITATIVE
+    CONTEXT; everything else is DETERMINISTIC FINANCIAL EVIDENCE — the
+    prompt keeps these two classes explicitly separate.
     """
 
     company: AnalystCompanyContext
@@ -84,20 +104,41 @@ class AnalystContext(BaseModel):
     risk_indicators: list[AnalystRiskContext] = Field(default_factory=list)
     scoring_warnings: list[str] = Field(default_factory=list)
 
+    research_available: bool = False
+    research_items: list[AnalystResearchItemContext] = Field(default_factory=list)
+    research_warnings: list[str] = Field(default_factory=list)
+
 
 # --- Structured LLM output --------------------------------------------------------
+
+
+class AnalystEvidence(BaseModel):
+    """Evidence citations, namespaced by evidence class.
+
+    `financial` covers both raw metric names and category-score names;
+    `valuation` covers valuation method names; `risk` covers risk
+    indicator names; `research` covers research item ids. Keeping these
+    separate (rather than one flat list) makes it possible for a future
+    UI to distinguish "this claim is backed by a calculated number" from
+    "this claim is backed by a news article" at a glance.
+    """
+
+    financial: list[str] = Field(default_factory=list)
+    valuation: list[str] = Field(default_factory=list)
+    risk: list[str] = Field(default_factory=list)
+    research: list[str] = Field(default_factory=list)
 
 
 class AnalystSection(BaseModel):
     """One narrative section, with evidence traceable back to `AnalystContext`.
 
-    `evidence` holds names (metric/category/risk-indicator names) that
-    must exist in the `AnalystContext` that produced this response —
-    validated by the response parser, never trusted blindly.
+    Every name in `evidence` must exist in the `AnalystContext` that
+    produced this response, in the matching namespace — validated by the
+    response parser, never trusted blindly.
     """
 
     text: str
-    evidence: list[str] = Field(default_factory=list)
+    evidence: AnalystEvidence = Field(default_factory=AnalystEvidence)
 
 
 class AnalystResponse(BaseModel):
@@ -160,3 +201,4 @@ class AnalystRequest(BaseModel):
     valuation: ValuationRange | None = None
     scoring: ScoringResult
     company_financials: CompanyFinancials | None = None
+    research: ResearchResult | None = None

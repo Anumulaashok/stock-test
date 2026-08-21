@@ -29,14 +29,14 @@ CASH_FLOW_RECORD = {
 }
 
 VALID_ANALYST_RESPONSE = {
-    "investment_thesis": {"text": "Solid.", "evidence": []},
+    "investment_thesis": {"text": "Solid.", "evidence": {"financial": [], "valuation": [], "risk": [], "research": []}},
     "strengths": [], "weaknesses": [],
-    "profitability_analysis": {"text": "n/a", "evidence": []},
-    "growth_analysis": {"text": "n/a", "evidence": []},
-    "financial_health_analysis": {"text": "n/a", "evidence": []},
-    "cash_flow_analysis": {"text": "n/a", "evidence": []},
-    "valuation_analysis": {"text": "n/a", "evidence": []},
-    "risk_analysis": {"text": "n/a", "evidence": []},
+    "profitability_analysis": {"text": "n/a", "evidence": {"financial": [], "valuation": [], "risk": [], "research": []}},
+    "growth_analysis": {"text": "n/a", "evidence": {"financial": [], "valuation": [], "risk": [], "research": []}},
+    "financial_health_analysis": {"text": "n/a", "evidence": {"financial": [], "valuation": [], "risk": [], "research": []}},
+    "cash_flow_analysis": {"text": "n/a", "evidence": {"financial": [], "valuation": [], "risk": [], "research": []}},
+    "valuation_analysis": {"text": "n/a", "evidence": {"financial": [], "valuation": [], "risk": [], "research": []}},
+    "risk_analysis": {"text": "n/a", "evidence": {"financial": [], "valuation": [], "risk": [], "research": []}},
     "key_takeaways": [], "caveats": [],
 }
 

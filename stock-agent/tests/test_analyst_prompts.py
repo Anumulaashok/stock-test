@@ -79,6 +79,26 @@ def test_task_section_defines_schema_and_forbids_recommendation_field():
 def test_user_prompt_combines_context_then_task_in_order():
     context = build_analyst_context(_financial_analysis(), None, _scoring())
     prompt = build_user_prompt(context)
-    context_index = prompt.index("Structured Financial Context")
+    context_index = prompt.index("Structured Context")
     task_index = prompt.index("Analysis Task")
     assert context_index < task_index
+
+
+def test_context_section_labels_deterministic_vs_research_evidence():
+    context = build_analyst_context(_financial_analysis(), None, _scoring())
+    section = build_context_section(context)
+    assert "DETERMINISTIC FINANCIAL EVIDENCE" in section
+    assert "EXTERNAL RESEARCH CONTEXT" in section
+
+
+def test_system_instructions_include_research_rules():
+    text = build_system_instructions()
+    assert "research" in text.lower()
+    assert "stale" in text.lower()
+    assert "research context was unavailable" in text.lower()
+
+
+def test_task_section_evidence_schema_has_four_namespaces():
+    section = build_task_section()
+    for namespace in ("financial", "valuation", "risk", "research"):
+        assert f'"{namespace}"' in section

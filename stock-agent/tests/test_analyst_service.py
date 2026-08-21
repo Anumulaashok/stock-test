@@ -9,6 +9,7 @@ from app.llm.base import LLMProvider, LLMProviderError
 from app.models.analyst import AnalystErrorCode
 from app.models.financial_results import FinancialAnalysisResult, FinancialMetricResult
 from app.models.financial_results import MetricStatus as FMS
+from app.models.research import ResearchError, ResearchErrorCode, ResearchItem, ResearchResult, ResearchSource
 from app.models.scoring import CategoryScore, ScoreStatus, ScoringResult
 
 
@@ -35,16 +36,25 @@ def _scoring():
     )
 
 
+_EMPTY_EVIDENCE = {"financial": [], "valuation": [], "risk": [], "research": []}
+
+
+def _evidence(**overrides):
+    e = dict(_EMPTY_EVIDENCE)
+    e.update(overrides)
+    return e
+
+
 VALID_RESPONSE = {
-    "investment_thesis": {"text": "Strong profitability.", "evidence": ["roe"]},
+    "investment_thesis": {"text": "Strong profitability.", "evidence": _evidence(financial=["roe"])},
     "strengths": ["High ROE"],
     "weaknesses": [],
-    "profitability_analysis": {"text": "ROE is strong.", "evidence": ["roe"]},
-    "growth_analysis": {"text": "unavailable", "evidence": []},
-    "financial_health_analysis": {"text": "n/a", "evidence": []},
-    "cash_flow_analysis": {"text": "n/a", "evidence": []},
-    "valuation_analysis": {"text": "n/a", "evidence": []},
-    "risk_analysis": {"text": "n/a", "evidence": []},
+    "profitability_analysis": {"text": "ROE is strong.", "evidence": _evidence(financial=["roe"])},
+    "growth_analysis": {"text": "unavailable", "evidence": _evidence()},
+    "financial_health_analysis": {"text": "n/a", "evidence": _evidence()},
+    "cash_flow_analysis": {"text": "n/a", "evidence": _evidence()},
+    "valuation_analysis": {"text": "n/a", "evidence": _evidence()},
+    "risk_analysis": {"text": "n/a", "evidence": _evidence()},
     "key_takeaways": ["ROE is a strength"],
     "caveats": ["Limited data available"],
 }
@@ -95,7 +105,7 @@ async def test_service_sends_system_prompt_and_user_prompt():
     call = provider.calls[0]
     assert call["system_prompt"] is not None
     assert "buy" in call["system_prompt"].lower() or "recommendation" in call["system_prompt"].lower()
-    assert "Structured Financial Context" in call["prompt"]
+    assert "Structured Context" in call["prompt"]
 
 
 @pytest.mark.asyncio
@@ -192,3 +202,85 @@ async def test_service_never_raises_on_missing_valuation_or_minimal_scoring():
     result = await service.analyze(_financial_analysis(), None, minimal_scoring)
 
     assert result.status == "success"
+
+
+# --- Research integration (Step 8) --------------------------------------------------
+
+
+def _research_result(item_id="research_001", status="success"):
+    if status != "success":
+        return ResearchResult(
+            status="error", error=ResearchError(code=ResearchErrorCode.PROVIDER_UNAVAILABLE, message="down"),
+            retrieved_at="2026-01-01T00:00:00+00:00",
+        )
+    item = ResearchItem(
+        id=item_id, title="Acme Corp expands into new market", summary="A summary.",
+        source=ResearchSource(title="Acme Corp expands into new market", publisher="Example News",
+                               url="https://example.com/a", published_at="2026-01-01T00:00:00+00:00"),
+        published_at="2026-01-01T00:00:00+00:00",
+    )
+    return ResearchResult(status="success", items=[item], sources=[item.source], retrieved_at="2026-01-01T00:00:00+00:00")
+
+
+@pytest.mark.asyncio
+async def test_service_includes_research_context_in_prompt_when_available():
+    response_with_research = dict(VALID_RESPONSE)
+    response_with_research["risk_analysis"] = {
+        "text": "context", "evidence": _evidence(risk=["high_debt_to_equity"], research=["research_001"]),
+    }
+    provider = FakeLLMProvider(responses=[json.dumps(response_with_research)])
+    service = AnalystService(provider)
+
+    result = await service.analyze(_financial_analysis(), None, _scoring(), research=_research_result())
+
+    assert result.status == "success"
+    assert "research_001" in provider.calls[0]["prompt"]
+    assert "EXTERNAL RESEARCH CONTEXT" in provider.calls[0]["prompt"]
+    assert result.response.risk_analysis.evidence.research == ["research_001"]
+
+
+@pytest.mark.asyncio
+async def test_service_omits_research_items_when_research_unavailable():
+    provider = FakeLLMProvider(responses=[json.dumps(VALID_RESPONSE)])
+    service = AnalystService(provider)
+
+    await service.analyze(_financial_analysis(), None, _scoring(), research=_research_result(status="error"))
+
+    prompt = provider.calls[0]["prompt"]
+    assert '"research_available":false' in prompt.replace(" ", "")
+    assert '"research_items":[]' in prompt.replace(" ", "")
+    # The actual article content must not appear -- only the fixed schema
+    # instructions may mention the literal string "research_001" as an example.
+    assert "Acme Corp expands into new market" not in prompt
+    assert "example.com/a" not in prompt
+
+
+@pytest.mark.asyncio
+async def test_service_filters_invalid_research_reference():
+    response_with_bad_research = dict(VALID_RESPONSE)
+    response_with_bad_research["risk_analysis"] = {
+        "text": "context", "evidence": _evidence(research=["research_999"]),  # not in supplied research
+    }
+    provider = FakeLLMProvider(responses=[json.dumps(response_with_bad_research)])
+    service = AnalystService(provider)
+
+    result = await service.analyze(_financial_analysis(), None, _scoring(), research=_research_result())
+
+    assert result.status == "success"
+    assert result.response.risk_analysis.evidence.research == []
+
+
+@pytest.mark.asyncio
+async def test_service_financial_and_research_evidence_stay_separate():
+    response = dict(VALID_RESPONSE)
+    response["risk_analysis"] = {
+        "text": "context",
+        "evidence": _evidence(financial=["roe"], research=["research_001"]),
+    }
+    provider = FakeLLMProvider(responses=[json.dumps(response)])
+    service = AnalystService(provider)
+
+    result = await service.analyze(_financial_analysis(), None, _scoring(), research=_research_result())
+
+    assert result.response.risk_analysis.evidence.financial == ["roe"]
+    assert result.response.risk_analysis.evidence.research == ["research_001"]

@@ -72,9 +72,9 @@ class FakeScoringService:
 
 
 class FakeAnalystService:
-    async def analyze(self, financial_analysis, valuation, scoring, company_financials=None):
+    async def analyze(self, financial_analysis, valuation, scoring, company_financials=None, research=None):
         from app.models.analyst import AnalystResponse, AnalystResult, AnalystSection
-        section = AnalystSection(text="ok", evidence=[])
+        section = AnalystSection(text="ok")
         return AnalystResult(status="success", response=AnalystResponse(
             company_name="ACME", investment_thesis=section, profitability_analysis=section,
             growth_analysis=section, financial_health_analysis=section, cash_flow_analysis=section,

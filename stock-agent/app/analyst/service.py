@@ -17,6 +17,7 @@ from app.llm.base import LLMProvider, LLMProviderError
 from app.models.analyst import AnalystError, AnalystErrorCode, AnalystResult
 from app.models.financial_results import FinancialAnalysisResult
 from app.models.financial_statements import CompanyFinancials
+from app.models.research import ResearchResult
 from app.models.scoring import ScoringResult
 from app.models.valuation import ValuationRange
 
@@ -40,8 +41,9 @@ class AnalystService:
         valuation: ValuationRange | None,
         scoring: ScoringResult,
         company_financials: CompanyFinancials | None = None,
+        research: ResearchResult | None = None,
     ) -> AnalystResult:
-        context = build_analyst_context(financial_analysis, valuation, scoring, company_financials)
+        context = build_analyst_context(financial_analysis, valuation, scoring, company_financials, research)
         valid_evidence = valid_evidence_names(context)
         system_prompt = build_system_instructions()
         base_prompt = build_user_prompt(context)

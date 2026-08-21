@@ -9,7 +9,9 @@ rejected rather than silently patched or invented.
 
 import json
 
-from app.models.analyst import AnalystErrorCode, AnalystResponse, AnalystSection
+from app.models.analyst import AnalystErrorCode, AnalystEvidence, AnalystResponse, AnalystSection
+
+_EVIDENCE_NAMESPACES = ("financial", "valuation", "risk", "research")
 
 _SECTION_FIELDS = [
     "investment_thesis",
@@ -65,6 +67,24 @@ def extract_json_object(raw_text: str) -> dict:
     return data
 
 
+def _validate_evidence(name: str, raw: object) -> AnalystEvidence:
+    if not isinstance(raw, dict):
+        raise AnalystValidationError(
+            AnalystErrorCode.INVALID_FIELD_TYPE,
+            f"'{name}.evidence' must be an object with financial/valuation/risk/research keys",
+        )
+    namespaced: dict[str, list[str]] = {}
+    for namespace in _EVIDENCE_NAMESPACES:
+        values = raw.get(namespace, [])
+        if not isinstance(values, list) or not all(isinstance(v, str) for v in values):
+            raise AnalystValidationError(
+                AnalystErrorCode.INVALID_FIELD_TYPE,
+                f"'{name}.evidence.{namespace}' must be a list of strings",
+            )
+        namespaced[namespace] = values
+    return AnalystEvidence(**namespaced)
+
+
 def _validate_section(name: str, raw: object) -> AnalystSection:
     if not isinstance(raw, dict):
         raise AnalystValidationError(
@@ -75,11 +95,7 @@ def _validate_section(name: str, raw: object) -> AnalystSection:
         raise AnalystValidationError(
             AnalystErrorCode.INVALID_FIELD_TYPE, f"'{name}.text' must be a string"
         )
-    evidence = raw.get("evidence", [])
-    if not isinstance(evidence, list) or not all(isinstance(item, str) for item in evidence):
-        raise AnalystValidationError(
-            AnalystErrorCode.INVALID_FIELD_TYPE, f"'{name}.evidence' must be a list of strings"
-        )
+    evidence = _validate_evidence(name, raw.get("evidence", {}))
     return AnalystSection(text=text, evidence=evidence)
 
 
@@ -91,12 +107,16 @@ def _validate_string_list(name: str, raw: object) -> list[str]:
     return raw
 
 
-def _filter_evidence(section: AnalystSection, valid_evidence: set[str]) -> AnalystSection:
-    return section.model_copy(update={"evidence": [e for e in section.evidence if e in valid_evidence]})
+def _filter_evidence(section: AnalystSection, valid_evidence: dict[str, set[str]]) -> AnalystSection:
+    filtered = {
+        namespace: [e for e in getattr(section.evidence, namespace) if e in valid_evidence.get(namespace, set())]
+        for namespace in _EVIDENCE_NAMESPACES
+    }
+    return section.model_copy(update={"evidence": AnalystEvidence(**filtered)})
 
 
 def build_analyst_response(
-    data: dict, company_name: str, valid_evidence: set[str]
+    data: dict, company_name: str, valid_evidence: dict[str, set[str]]
 ) -> AnalystResponse:
     """Validate `data` (already-parsed JSON) and build a trusted `AnalystResponse`.
 

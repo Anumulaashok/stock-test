@@ -50,6 +50,19 @@ class Settings(BaseSettings):
     # How many annual periods to request per statement type.
     financial_data_annual_periods_limit: int = Field(default=5)
 
+    # External research/market-context provider (Step 8). "finnhub" is the
+    # only one implemented so far. Research is optional — the app runs
+    # fully without it, and a caller must explicitly opt in per request.
+    research_provider: str = Field(default="finnhub")
+    research_api_key: str | None = Field(default=None)
+    research_base_url: str = Field(default="https://finnhub.io/api/v1")
+    research_connect_timeout_seconds: float = Field(default=5.0)
+    research_timeout_seconds: float = Field(default=10.0)
+    research_max_retries: int = Field(default=1)
+    research_default_days: int = Field(default=30)
+    research_default_max_results: int = Field(default=5)
+    research_stale_after_days: int = Field(default=14)
+
     # Database
     database_url: str | None = Field(default=None)
 

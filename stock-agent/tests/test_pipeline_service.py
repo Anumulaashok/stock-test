@@ -44,7 +44,7 @@ def _scoring(warnings=None):
 
 
 def _analyst_success():
-    section = AnalystSection(text="ok", evidence=[])
+    section = AnalystSection(text="ok")
     return AnalystResult(
         status="success",
         response=AnalystResponse(
@@ -96,7 +96,7 @@ class FakeAnalystService:
         self._raises = raises
         self.calls = []
 
-    async def analyze(self, financial_analysis, valuation, scoring, company_financials=None):
+    async def analyze(self, financial_analysis, valuation, scoring, company_financials=None, research=None):
         self.calls.append((financial_analysis, valuation, scoring, company_financials))
         if self._raises:
             raise self._raises

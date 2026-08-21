@@ -11,11 +11,13 @@ from app.models.analyst import (
     AnalystCompanyContext,
     AnalystContext,
     AnalystMetricContext,
+    AnalystResearchItemContext,
     AnalystRiskContext,
     AnalystValuationMethodContext,
 )
 from app.models.financial_results import FinancialAnalysisResult
 from app.models.financial_statements import CompanyFinancials
+from app.models.research import ResearchResult
 from app.models.scoring import ScoringResult
 from app.models.valuation import ValuationRange
 
@@ -25,6 +27,7 @@ def build_analyst_context(
     valuation: ValuationRange | None,
     scoring: ScoringResult,
     company_financials: CompanyFinancials | None = None,
+    research: ResearchResult | None = None,
 ) -> AnalystContext:
     """Assemble the single, serializable context the LLM will see."""
     company = AnalystCompanyContext(
@@ -69,6 +72,23 @@ def build_analyst_context(
         for risk in scoring.risk_indicators
     ]
 
+    research_available = research is not None and research.status == "success" and bool(research.items)
+    research_items = (
+        [
+            AnalystResearchItemContext(
+                id=item.id, title=item.title, publisher=item.source.publisher,
+                published_at=item.published_at, url=item.source.url, summary=item.summary,
+                freshness=item.freshness.value,
+            )
+            for item in research.items
+        ]
+        if research and research.status == "success"
+        else []
+    )
+    research_warnings = research.warnings if research else []
+    if research is not None and research.status != "success" and research.error:
+        research_warnings = [research.error.message, *research_warnings]
+
     return AnalystContext(
         company=company,
         periods_analyzed=financial_analysis.periods_analyzed,
@@ -83,17 +103,24 @@ def build_analyst_context(
         category_scores=category_scores,
         risk_indicators=risk_indicators,
         scoring_warnings=scoring.warnings,
+        research_available=research_available,
+        research_items=research_items,
+        research_warnings=research_warnings,
     )
 
 
-def valid_evidence_names(context: AnalystContext) -> set[str]:
-    """Every name the model is allowed to cite as evidence.
+def valid_evidence_names(context: AnalystContext) -> dict[str, set[str]]:
+    """Every name the model is allowed to cite as evidence, namespaced to
+    match `AnalystEvidence`'s fields.
 
     Used by the response parser/validator to reject evidence references
     that don't correspond to anything actually supplied in the context.
     """
-    names = {metric.name for metric in context.financial_metrics}
-    names |= {method.method for method in context.valuation_methods}
-    names |= {category.category for category in context.category_scores}
-    names |= {risk.name for risk in context.risk_indicators}
-    return names
+    financial = {metric.name for metric in context.financial_metrics}
+    financial |= {category.category for category in context.category_scores}
+    return {
+        "financial": financial,
+        "valuation": {method.method for method in context.valuation_methods},
+        "risk": {risk.name for risk in context.risk_indicators},
+        "research": {item.id for item in context.research_items},
+    }

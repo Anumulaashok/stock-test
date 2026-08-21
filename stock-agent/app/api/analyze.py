@@ -25,6 +25,8 @@ from app.pipeline.models import (
     TickerAnalysisRequest,
 )
 from app.pipeline.service import AnalysisPipelineService
+from app.research.factory import get_research_provider
+from app.research.service import ResearchService
 from app.scoring.service import ScoringService
 from app.valuation.service import ValuationService
 
@@ -50,6 +52,22 @@ class _MisconfiguredAnalystService:
         )
 
 
+def _build_research_service(settings: Settings) -> ResearchService | None:
+    """Returns `None` (not an error) when unconfigured — research is
+    always optional; a caller who didn't opt in never even calls this."""
+    try:
+        provider = get_research_provider(settings)
+    except ValueError as exc:
+        logger.info("Research provider not configured: %s", exc)
+        return None
+    return ResearchService(
+        provider,
+        default_date_range_days=settings.research_default_days,
+        default_max_results=settings.research_default_max_results,
+        stale_after_days=settings.research_stale_after_days,
+    )
+
+
 def _build_pipeline(settings: Settings) -> AnalysisPipelineService:
     try:
         provider = get_llm_provider(settings)
@@ -63,6 +81,7 @@ def _build_pipeline(settings: Settings) -> AnalysisPipelineService:
         valuation_service=ValuationService(),
         scoring_service=ScoringService(),
         analyst_service=analyst_service,
+        research_service=_build_research_service(settings),
     )
 
 

@@ -16,15 +16,15 @@ def d(value) -> Decimal:
 
 
 VALID_ANALYST_RESPONSE = {
-    "investment_thesis": {"text": "Solid fundamentals.", "evidence": []},
+    "investment_thesis": {"text": "Solid fundamentals.", "evidence": {"financial": [], "valuation": [], "risk": [], "research": []}},
     "strengths": ["Positive revenue"],
     "weaknesses": [],
-    "profitability_analysis": {"text": "n/a", "evidence": []},
-    "growth_analysis": {"text": "n/a", "evidence": []},
-    "financial_health_analysis": {"text": "n/a", "evidence": []},
-    "cash_flow_analysis": {"text": "n/a", "evidence": []},
-    "valuation_analysis": {"text": "n/a", "evidence": []},
-    "risk_analysis": {"text": "n/a", "evidence": []},
+    "profitability_analysis": {"text": "n/a", "evidence": {"financial": [], "valuation": [], "risk": [], "research": []}},
+    "growth_analysis": {"text": "n/a", "evidence": {"financial": [], "valuation": [], "risk": [], "research": []}},
+    "financial_health_analysis": {"text": "n/a", "evidence": {"financial": [], "valuation": [], "risk": [], "research": []}},
+    "cash_flow_analysis": {"text": "n/a", "evidence": {"financial": [], "valuation": [], "risk": [], "research": []}},
+    "valuation_analysis": {"text": "n/a", "evidence": {"financial": [], "valuation": [], "risk": [], "research": []}},
+    "risk_analysis": {"text": "n/a", "evidence": {"financial": [], "valuation": [], "risk": [], "research": []}},
     "key_takeaways": [],
     "caveats": [],
 }
@@ -48,6 +48,71 @@ def _minimal_request_body(**overrides):
     }
     body.update(overrides)
     return body
+
+
+@respx.mock
+def test_analyze_endpoint_with_research_enabled(monkeypatch):
+    monkeypatch.setenv("LOCAL_LLM_BASE_URL", "http://test-llm:8080/v1")
+    monkeypatch.setenv("LOCAL_LLM_MODEL", "qwen3-8b")
+    monkeypatch.setenv("RESEARCH_PROVIDER", "finnhub")
+    monkeypatch.setenv("RESEARCH_API_KEY", "research-secret-key")
+    monkeypatch.setenv("RESEARCH_BASE_URL", "http://test-finnhub:9999/api/v1")
+
+    respx.post("http://test-llm:8080/v1/chat/completions").mock(
+        return_value=httpx.Response(
+            200, json={"choices": [{"message": {"content": json.dumps(VALID_ANALYST_RESPONSE)}}]}
+        )
+    )
+    respx.get("http://test-finnhub:9999/api/v1/company-news").mock(
+        return_value=httpx.Response(
+            200,
+            json=[
+                {
+                    "category": "company", "datetime": 1767225600, "headline": "Acme Corp expands",
+                    "source": "Example News", "summary": "Expansion news.", "url": "https://example.com/a",
+                }
+            ],
+        )
+    )
+
+    get_settings.cache_clear()
+    try:
+        body = _minimal_request_body(research={"enabled": True})
+        response = client.post("/api/v1/analyze", json=body)
+        assert response.status_code == 200
+        result = response.json()
+        assert result["status"] == "calculated"
+        assert result["research"] is not None
+        assert result["research"]["status"] == "success"
+        assert len(result["research"]["items"]) == 1
+        assert result["research"]["items"][0]["id"] == "research_001"
+        assert "research-secret-key" not in response.text
+    finally:
+        get_settings.cache_clear()
+
+
+@respx.mock
+def test_analyze_endpoint_research_not_requested_by_default(monkeypatch):
+    monkeypatch.setenv("LOCAL_LLM_BASE_URL", "http://test-llm:8080/v1")
+    monkeypatch.setenv("LOCAL_LLM_MODEL", "qwen3-8b")
+    monkeypatch.setenv("RESEARCH_PROVIDER", "finnhub")
+    monkeypatch.setenv("RESEARCH_API_KEY", "research-secret-key")
+
+    respx.post("http://test-llm:8080/v1/chat/completions").mock(
+        return_value=httpx.Response(
+            200, json={"choices": [{"message": {"content": json.dumps(VALID_ANALYST_RESPONSE)}}]}
+        )
+    )
+    # No respx route registered for company-news -- if the app called it
+    # unexpectedly, respx would raise, failing this test.
+
+    get_settings.cache_clear()
+    try:
+        response = client.post("/api/v1/analyze", json=_minimal_request_body())
+        assert response.status_code == 200
+        assert response.json()["research"] is None
+    finally:
+        get_settings.cache_clear()
 
 
 @respx.mock

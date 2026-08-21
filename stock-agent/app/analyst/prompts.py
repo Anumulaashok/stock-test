@@ -19,25 +19,34 @@ Respond with ONLY a single valid JSON object — no markdown code fences, \
 no text before or after it. It must have exactly these top-level keys:
 
 {
-  "investment_thesis": {"text": "<2-4 sentence summary>", "evidence": ["<name>", ...]},
+  "investment_thesis": {"text": "<2-4 sentence summary>", "evidence": {"financial": ["<name>"], "valuation": ["<name>"], "risk": ["<name>"], "research": ["<id>"]}},
   "strengths": ["<short factual statement>", ...],
   "weaknesses": ["<short factual statement>", ...],
-  "profitability_analysis": {"text": "<1-3 sentences>", "evidence": ["<name>", ...]},
-  "growth_analysis": {"text": "<1-3 sentences>", "evidence": ["<name>", ...]},
-  "financial_health_analysis": {"text": "<1-3 sentences>", "evidence": ["<name>", ...]},
-  "cash_flow_analysis": {"text": "<1-3 sentences>", "evidence": ["<name>", ...]},
-  "valuation_analysis": {"text": "<1-3 sentences>", "evidence": ["<name>", ...]},
-  "risk_analysis": {"text": "<1-3 sentences>", "evidence": ["<name>", ...]},
+  "profitability_analysis": {"text": "<1-3 sentences>", "evidence": {"financial": ["<name>"], "valuation": [], "risk": [], "research": []}},
+  "growth_analysis": {"text": "<1-3 sentences>", "evidence": {...same shape...}},
+  "financial_health_analysis": {"text": "<1-3 sentences>", "evidence": {...same shape...}},
+  "cash_flow_analysis": {"text": "<1-3 sentences>", "evidence": {...same shape...}},
+  "valuation_analysis": {"text": "<1-3 sentences>", "evidence": {...same shape...}},
+  "risk_analysis": {"text": "<1-3 sentences>", "evidence": {...same shape...}},
   "key_takeaways": ["<short statement>", ...],
   "caveats": ["<short statement>", ...]
 }
 
-Each "evidence" array must only contain metric/category/risk names taken \
-verbatim from the "name" or "category" or "method" fields in the supplied \
-context below — never invent a name that is not present there. If a \
-section has no supporting data available, still return the key with an \
-empty "evidence" array and text that explicitly says the information is \
-unavailable.
+Every "evidence" object has exactly four keys: "financial", "valuation", \
+"risk", "research" — each a list of strings (use an empty list `[]` for \
+any that don't apply to that section). Do not omit any of the four keys.
+
+- "financial": metric names or category names, taken verbatim from the \
+"name"/"category" fields under financial_metrics/category_scores below.
+- "valuation": method names, taken verbatim from "method" under valuation_methods.
+- "risk": risk indicator names, taken verbatim from "name" under risk_indicators.
+- "research": research item ids (e.g. "research_001"), taken verbatim from \
+"id" under research_items — ONLY if research_available is true.
+
+Never invent a name/id that is not present in the supplied context. If a \
+section has no supporting data available, still return the key with all \
+four evidence lists empty and text that explicitly says the information \
+is unavailable.
 
 Do NOT include a "recommendation", "rating", "buy", "sell", or "hold" \
 field anywhere in the response. This is not part of the schema.\
@@ -53,7 +62,10 @@ of an already-completed deterministic financial analysis.
 You will be given financial metrics, valuation results, category scores, \
 and risk indicators that were all calculated by separate deterministic \
 software — not by you. Treat every supplied number and status as \
-authoritative and final.
+authoritative and final. You may also be given external research items \
+(recent news/company developments) — this is qualitative context, not \
+verified financial fact, and is clearly labeled EXTERNAL RESEARCH \
+CONTEXT below wherever it appears.
 
 Rules you must follow at all times:
 
@@ -83,15 +95,47 @@ Rules you must follow at all times:
 12. Be concise, neutral, and evidence-based. Avoid hype, sensational
     language, guaranteed outcomes, or vague claims not tied to the
     supplied data.
+
+Rules specifically about EXTERNAL RESEARCH CONTEXT (research_items):
+
+13. financial_metrics/category_scores are authoritative for financial
+    metrics; valuation_methods is authoritative for valuation figures;
+    category_scores is authoritative for scores; risk_indicators is
+    authoritative for risk severity. research_items is contextual
+    information only and can never override any of the above.
+14. Do not treat a claim in a research item as a verified financial fact
+    unless it is explicitly supported by the deterministic data above —
+    a news headline is not evidence of a financial metric's value.
+15. Do not invent a fact beyond what a research item's title/summary
+    actually states.
+16. When you cite a research item, reference its id (e.g. "research_001")
+    under the "research" evidence key so the claim stays traceable to
+    its source.
+17. If research_available is false, explicitly say "research context was unavailable" — never omit the topic silently.
+18. Never present a research item whose freshness is "stale" as if it
+    were current or recent news.
+19. Research context must never be used to construct a buy, sell, or
+    hold recommendation, a trade signal, or a target price.
 """
 
 
 def build_context_section(context: AnalystContext) -> str:
-    """The structured, deterministic data, as compact JSON."""
+    """The structured data, as compact JSON.
+
+    `financial_metrics`, `valuation_methods`, `category_scores`, and
+    `risk_indicators` are DETERMINISTIC FINANCIAL EVIDENCE (authoritative).
+    `research_items` (when `research_available` is true) is EXTERNAL
+    RESEARCH CONTEXT (qualitative only) — the field names themselves keep
+    these two evidence classes distinct in the JSON.
+    """
     return (
-        "## Structured Financial Context\n\n"
-        "This is the complete set of deterministic data available. "
-        "Nothing outside this JSON exists for the purpose of this analysis.\n\n"
+        "## Structured Context\n\n"
+        "DETERMINISTIC FINANCIAL EVIDENCE (authoritative — company, "
+        "financial_metrics, valuation_methods, category_scores, "
+        "risk_indicators) and EXTERNAL RESEARCH CONTEXT (qualitative only "
+        "— research_items, present only when research_available is true) "
+        "are both included below. Nothing outside this JSON exists for "
+        "the purpose of this analysis.\n\n"
         f"{context.model_dump_json(exclude_none=True)}"
     )
 

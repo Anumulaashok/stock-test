@@ -4,6 +4,7 @@ from app.analyst.context import build_analyst_context, valid_evidence_names
 from app.models.financial_results import FinancialAnalysisResult, FinancialMetricResult
 from app.models.financial_results import MetricStatus as FMS
 from app.models.financial_statements import CompanyFinancials
+from app.models.research import ResearchError, ResearchErrorCode, ResearchItem, ResearchResult, ResearchSource
 from app.models.scoring import CategoryScore, RiskIndicator, ScoreStatus, ScoringResult, Severity
 from app.models.valuation import ValuationRange, ValuationResult
 
@@ -137,9 +138,51 @@ def test_context_preserves_scoring_warnings():
 def test_valid_evidence_names_covers_all_categories():
     context = build_analyst_context(_financial_analysis(), None, _scoring())
     names = valid_evidence_names(context)
-    assert "roe" in names
-    assert "revenue_growth" in names
-    assert "profitability" in names
-    assert "valuation" in names
-    assert "high_debt_to_equity" in names
-    assert "nonexistent_metric" not in names
+    assert "roe" in names["financial"]
+    assert "revenue_growth" in names["financial"]
+    assert "profitability" in names["financial"]  # category-score names live under "financial" too
+    assert "valuation" in names["financial"]
+    assert "high_debt_to_equity" in names["risk"]
+    assert "nonexistent_metric" not in names["financial"]
+    assert names["research"] == set()  # no research supplied in this fixture
+
+
+def _successful_research():
+    item = ResearchItem(
+        id="research_001", title="Acme Corp expands", summary="Summary text",
+        source=ResearchSource(title="Acme Corp expands", publisher="Example News", url="https://example.com/a",
+                               published_at="2026-01-01T00:00:00+00:00"),
+        published_at="2026-01-01T00:00:00+00:00",
+    )
+    return ResearchResult(status="success", items=[item], sources=[item.source], retrieved_at="2026-01-10T00:00:00+00:00")
+
+
+def test_context_includes_research_when_available():
+    context = build_analyst_context(_financial_analysis(), None, _scoring(), research=_successful_research())
+    assert context.research_available is True
+    assert len(context.research_items) == 1
+    assert context.research_items[0].id == "research_001"
+    assert context.research_items[0].publisher == "Example News"
+
+
+def test_context_omits_research_when_unavailable():
+    error_research = ResearchResult(
+        status="error", error=ResearchError(code=ResearchErrorCode.PROVIDER_UNAVAILABLE, message="down"),
+        retrieved_at="2026-01-10T00:00:00+00:00",
+    )
+    context = build_analyst_context(_financial_analysis(), None, _scoring(), research=error_research)
+    assert context.research_available is False
+    assert context.research_items == []
+    assert "down" in context.research_warnings
+
+
+def test_context_no_research_supplied_at_all():
+    context = build_analyst_context(_financial_analysis(), None, _scoring(), research=None)
+    assert context.research_available is False
+    assert context.research_items == []
+
+
+def test_valid_evidence_names_includes_research_item_ids():
+    context = build_analyst_context(_financial_analysis(), None, _scoring(), research=_successful_research())
+    names = valid_evidence_names(context)
+    assert "research_001" in names["research"]

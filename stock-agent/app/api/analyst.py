@@ -39,4 +39,5 @@ async def analyze(
         valuation=request.valuation,
         scoring=request.scoring,
         company_financials=request.company_financials,
+        research=request.research,
     )

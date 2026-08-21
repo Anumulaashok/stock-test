@@ -14,8 +14,21 @@ from pydantic import BaseModel, Field
 from app.models.analyst import AnalystResult
 from app.models.financial_results import FinancialAnalysisResult
 from app.models.financial_statements import CompanyFinancials
+from app.models.research import ResearchResult
 from app.models.scoring import ScoringResult
 from app.models.valuation import ValuationRange
+
+
+class ResearchOptions(BaseModel):
+    """Research enrichment (Step 8) is opt-in per request — `enabled`
+    defaults to `False` so existing callers are unaffected and no
+    external research API call happens unless explicitly requested.
+    `days`/`max_results` of `None` mean "use the research service's
+    configured default"."""
+
+    enabled: bool = False
+    days: int | None = None
+    max_results: int | None = None
 
 
 class ValuationAssumptions(BaseModel):
@@ -47,6 +60,8 @@ class ValuationAssumptions(BaseModel):
     target_pe: Decimal | None = None
     target_ev_ebitda: Decimal | None = None
     target_pfcf: Decimal | None = None
+
+    research: ResearchOptions = Field(default_factory=ResearchOptions)
 
 
 class AnalysisRequest(ValuationAssumptions):
@@ -101,6 +116,7 @@ class CombinedAnalysisResult(BaseModel):
     financial_analysis: FinancialAnalysisResult | None = None
     valuation: ValuationRange | None = None
     scoring: ScoringResult | None = None
+    research: ResearchResult | None = None
     analyst: AnalystResult | None = None
     warnings: list[str] = Field(default_factory=list)
     metadata: ExecutionMetadata | None = None

@@ -19,15 +19,15 @@ def d(value) -> Decimal:
 
 
 VALID_RESPONSE = {
-    "investment_thesis": {"text": "Strong profitability.", "evidence": ["roe"]},
+    "investment_thesis": {"text": "Strong profitability.", "evidence": {"financial": ["roe"], "valuation": [], "risk": [], "research": []}},
     "strengths": ["High ROE"],
     "weaknesses": [],
-    "profitability_analysis": {"text": "ROE is strong.", "evidence": ["roe"]},
-    "growth_analysis": {"text": "unavailable", "evidence": []},
-    "financial_health_analysis": {"text": "n/a", "evidence": []},
-    "cash_flow_analysis": {"text": "n/a", "evidence": []},
-    "valuation_analysis": {"text": "n/a", "evidence": []},
-    "risk_analysis": {"text": "n/a", "evidence": []},
+    "profitability_analysis": {"text": "ROE is strong.", "evidence": {"financial": ["roe"], "valuation": [], "risk": [], "research": []}},
+    "growth_analysis": {"text": "unavailable", "evidence": {"financial": [], "valuation": [], "risk": [], "research": []}},
+    "financial_health_analysis": {"text": "n/a", "evidence": {"financial": [], "valuation": [], "risk": [], "research": []}},
+    "cash_flow_analysis": {"text": "n/a", "evidence": {"financial": [], "valuation": [], "risk": [], "research": []}},
+    "valuation_analysis": {"text": "n/a", "evidence": {"financial": [], "valuation": [], "risk": [], "research": []}},
+    "risk_analysis": {"text": "n/a", "evidence": {"financial": [], "valuation": [], "risk": [], "research": []}},
     "key_takeaways": ["ROE is a strength"],
     "caveats": ["Limited data available"],
 }

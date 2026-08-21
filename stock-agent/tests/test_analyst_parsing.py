@@ -5,24 +5,36 @@ import pytest
 from app.analyst.parsing import AnalystValidationError, build_analyst_response, extract_json_object
 from app.models.analyst import AnalystErrorCode
 
-VALID_EVIDENCE = {"roe", "net_margin", "profitability", "high_debt_to_equity"}
+VALID_EVIDENCE = {
+    "financial": {"roe", "net_margin", "profitability"},
+    "valuation": {"dcf"},
+    "risk": {"high_debt_to_equity"},
+    "research": {"research_001"},
+}
 
 
-def _section(text="ok", evidence=None):
-    return {"text": text, "evidence": evidence or []}
+def _evidence(financial=None, valuation=None, risk=None, research=None):
+    return {
+        "financial": financial or [], "valuation": valuation or [],
+        "risk": risk or [], "research": research or [],
+    }
+
+
+def _section(text="ok", financial=None, valuation=None, risk=None, research=None):
+    return {"text": text, "evidence": _evidence(financial, valuation, risk, research)}
 
 
 def _valid_payload(**overrides):
     payload = {
-        "investment_thesis": _section("thesis", ["roe"]),
+        "investment_thesis": _section("thesis", financial=["roe"]),
         "strengths": ["strong ROE"],
         "weaknesses": ["high leverage"],
-        "profitability_analysis": _section("profitable", ["roe", "net_margin"]),
+        "profitability_analysis": _section("profitable", financial=["roe", "net_margin"]),
         "growth_analysis": _section("growth"),
         "financial_health_analysis": _section("health"),
         "cash_flow_analysis": _section("cash"),
-        "valuation_analysis": _section("valuation"),
-        "risk_analysis": _section("risk", ["high_debt_to_equity"]),
+        "valuation_analysis": _section("valuation", valuation=["dcf"]),
+        "risk_analysis": _section("risk", risk=["high_debt_to_equity"], research=["research_001"]),
         "key_takeaways": ["takeaway one"],
         "caveats": ["caveat one"],
     }
@@ -69,8 +81,14 @@ def test_build_analyst_response_valid():
     response = build_analyst_response(_valid_payload(), "Acme Corp", VALID_EVIDENCE)
     assert response.company_name == "Acme Corp"
     assert response.investment_thesis.text == "thesis"
-    assert response.investment_thesis.evidence == ["roe"]
+    assert response.investment_thesis.evidence.financial == ["roe"]
     assert response.strengths == ["strong ROE"]
+
+
+def test_build_analyst_response_research_evidence_preserved():
+    response = build_analyst_response(_valid_payload(), "Acme Corp", VALID_EVIDENCE)
+    assert response.risk_analysis.evidence.risk == ["high_debt_to_equity"]
+    assert response.risk_analysis.evidence.research == ["research_001"]
 
 
 def test_build_analyst_response_missing_required_field():
@@ -110,13 +128,47 @@ def test_build_analyst_response_invalid_list_field_type():
     assert exc_info.value.code is AnalystErrorCode.INVALID_FIELD_TYPE
 
 
+def test_build_analyst_response_evidence_not_an_object_is_invalid():
+    payload = _valid_payload(profitability_analysis={"text": "x", "evidence": ["roe"]})
+    with pytest.raises(AnalystValidationError) as exc_info:
+        build_analyst_response(payload, "Acme Corp", VALID_EVIDENCE)
+    assert exc_info.value.code is AnalystErrorCode.INVALID_FIELD_TYPE
+
+
+def test_build_analyst_response_evidence_namespace_wrong_type_is_invalid():
+    payload = _valid_payload(
+        profitability_analysis={"text": "x", "evidence": {"financial": "not-a-list"}}
+    )
+    with pytest.raises(AnalystValidationError) as exc_info:
+        build_analyst_response(payload, "Acme Corp", VALID_EVIDENCE)
+    assert exc_info.value.code is AnalystErrorCode.INVALID_FIELD_TYPE
+
+
 def test_build_analyst_response_filters_unknown_evidence_reference():
     payload = _valid_payload(
-        profitability_analysis=_section("profitable", ["roe", "totally_made_up_metric"])
+        profitability_analysis=_section("profitable", financial=["roe", "totally_made_up_metric"])
     )
     response = build_analyst_response(payload, "Acme Corp", VALID_EVIDENCE)
-    assert response.profitability_analysis.evidence == ["roe"]
-    assert "totally_made_up_metric" not in response.profitability_analysis.evidence
+    assert response.profitability_analysis.evidence.financial == ["roe"]
+    assert "totally_made_up_metric" not in response.profitability_analysis.evidence.financial
+
+
+def test_build_analyst_response_filters_unknown_research_reference():
+    payload = _valid_payload(
+        risk_analysis=_section("risk", risk=["high_debt_to_equity"], research=["research_999"])
+    )
+    response = build_analyst_response(payload, "Acme Corp", VALID_EVIDENCE)
+    assert response.risk_analysis.evidence.research == []
+
+
+def test_build_analyst_response_evidence_cannot_cross_namespaces():
+    # A valuation method name cited under "financial" is not valid there,
+    # even though it's a real name somewhere in the context.
+    payload = _valid_payload(
+        profitability_analysis=_section("profitable", financial=["dcf"])
+    )
+    response = build_analyst_response(payload, "Acme Corp", VALID_EVIDENCE)
+    assert response.profitability_analysis.evidence.financial == []
 
 
 def test_build_analyst_response_empty_section_text_is_allowed():

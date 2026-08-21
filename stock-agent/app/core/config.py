@@ -38,6 +38,18 @@ class Settings(BaseSettings):
     local_llm_timeout_seconds: float = Field(default=120.0)
     local_llm_enable_thinking: bool = Field(default=False)
 
+    # External financial data provider. "fmp" (Financial Modeling Prep) is
+    # the only one implemented so far.
+    financial_data_provider: str = Field(default="fmp")
+    financial_data_api_key: str | None = Field(default=None)
+    # FMP's public API host — not a secret, but still overridable.
+    financial_data_base_url: str = Field(default="https://financialmodelingprep.com/stable")
+    financial_data_connect_timeout_seconds: float = Field(default=5.0)
+    financial_data_timeout_seconds: float = Field(default=15.0)
+    financial_data_max_retries: int = Field(default=2)
+    # How many annual periods to request per statement type.
+    financial_data_annual_periods_limit: int = Field(default=5)
+
     # Database
     database_url: str | None = Field(default=None)
 

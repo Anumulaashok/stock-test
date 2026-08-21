@@ -10,11 +10,20 @@ import logging
 from fastapi import APIRouter, Depends
 
 from app.analyst.service import AnalystService
+from app.application.service import AnalysisApplicationService
 from app.core.config import Settings, get_settings
+from app.data.factory import get_financial_data_provider
+from app.data.service import FinancialDataService
 from app.financial.service import FinancialAnalysisService
 from app.llm.factory import get_llm_provider
 from app.models.analyst import AnalystError, AnalystErrorCode, AnalystResult
-from app.pipeline.models import AnalysisRequest, CombinedAnalysisResult
+from app.pipeline.models import (
+    AnalysisRequest,
+    CombinedAnalysisResult,
+    PipelineCompanyInfo,
+    PipelineStatus,
+    TickerAnalysisRequest,
+)
 from app.pipeline.service import AnalysisPipelineService
 from app.scoring.service import ScoringService
 from app.valuation.service import ValuationService
@@ -63,3 +72,22 @@ async def analyze(
 ) -> CombinedAnalysisResult:
     pipeline = _build_pipeline(settings)
     return await pipeline.analyze(request)
+
+
+@router.post("/analyze/ticker")
+async def analyze_ticker(
+    request: TickerAnalysisRequest, settings: Settings = Depends(get_settings)
+) -> CombinedAnalysisResult:
+    try:
+        provider = get_financial_data_provider(settings)
+    except ValueError as exc:
+        logger.warning("Financial data provider misconfigured: %s", exc)
+        return CombinedAnalysisResult(
+            company=PipelineCompanyInfo(name=request.ticker, ticker=request.ticker),
+            status=PipelineStatus.FAILED,
+            warnings=[f"Financial data provider is not configured: {exc}"],
+        )
+
+    pipeline = _build_pipeline(settings)
+    application_service = AnalysisApplicationService(FinancialDataService(provider), pipeline)
+    return await application_service.analyze_by_ticker(request)

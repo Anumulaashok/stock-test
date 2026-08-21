@@ -18,21 +18,20 @@ from app.models.scoring import ScoringResult
 from app.models.valuation import ValuationRange
 
 
-class AnalysisRequest(BaseModel):
-    """Everything the pipeline needs to analyze one company.
+class ValuationAssumptions(BaseModel):
+    """Valuation assumptions/market data the deterministic engines cannot
+    derive on their own (discount rate, target multiples, ...), or
+    optional overrides for values that *can* be derived from a company's
+    latest reported period (shares outstanding, total debt, cash, EPS) —
+    see `adapters.build_valuation_input`. `ebitda` has no source in
+    `CompanyFinancials` at all, so it must always come from the caller
+    if EV/EBITDA valuation is desired.
 
-    Fields below `company_financials` are valuation assumptions/market
-    data the deterministic engines cannot derive on their own (discount
-    rate, target multiples, ...), or optional overrides for values that
-    *can* be derived from `company_financials`' latest period (shares
-    outstanding, total debt, cash, EPS) — see `adapters.build_valuation_input`.
-    `ebitda` has no source in `CompanyFinancials` at all, so it must
-    always come from the caller if EV/EBITDA valuation is desired.
+    Shared by `AnalysisRequest` (caller supplies `CompanyFinancials`
+    directly) and `TickerAnalysisRequest` (Step 7: statements are fetched
+    from an external provider) so both request shapes stay identical
+    apart from how financial statement data is obtained.
     """
-
-    company_name: str
-    ticker: str | None = None
-    company_financials: CompanyFinancials
 
     current_share_price: Decimal | None = None
     shares_outstanding: Decimal | None = None
@@ -48,6 +47,23 @@ class AnalysisRequest(BaseModel):
     target_pe: Decimal | None = None
     target_ev_ebitda: Decimal | None = None
     target_pfcf: Decimal | None = None
+
+
+class AnalysisRequest(ValuationAssumptions):
+    """Everything the pipeline needs to analyze one company, with
+    caller-supplied financial statements."""
+
+    company_name: str
+    ticker: str | None = None
+    company_financials: CompanyFinancials
+
+
+class TickerAnalysisRequest(ValuationAssumptions):
+    """Requests analysis for a company by ticker — financial statements
+    are fetched from the configured external data provider (Step 7)
+    rather than supplied directly."""
+
+    ticker: str
 
 
 class PipelineStatus(StrEnum):

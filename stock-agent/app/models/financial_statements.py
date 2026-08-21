@@ -66,6 +66,11 @@ class CompanyFinancials(BaseModel):
 
     company_name: str
     ticker: str | None = None
+    currency: str | None = Field(
+        default=None,
+        description="ISO-ish currency code as reported by the data source (e.g. 'USD'). "
+        "Never guessed — left unset if the source doesn't report one.",
+    )
     fiscal_periods: list[str] = Field(
         default_factory=list,
         description="Optional, informational list of known fiscal period labels.",

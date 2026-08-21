@@ -261,3 +261,53 @@ export interface TickerAnalysisRequest {
   ticker: string
   include_report: true
 }
+
+// --- Auth / portfolio (Step 11) -----------------------------------------------------
+// Mirrors app/models/user.py and app/models/portfolio.py. As elsewhere in this
+// file, Decimal fields are serialized as JSON strings, not numbers.
+
+export interface UserPublic {
+  id: string
+  email: string
+  created_at: string
+}
+
+export interface TokenResponse {
+  access_token: string
+  token_type: string
+  user: UserPublic
+}
+
+export interface Holding {
+  id: string
+  ticker: string
+  quantity: string
+  average_cost: string
+  added_at: string
+  updated_at: string
+}
+
+export type PriceStatus = 'live' | 'delayed' | 'stale' | 'unavailable'
+
+export interface HoldingWithMarketData extends Holding {
+  current_price: string | null
+  price_status: PriceStatus
+  market_value: string | null
+  unrealized_gain: string | null
+  unrealized_gain_percent: string | null
+}
+
+export interface PortfolioSummary {
+  portfolio_id: string
+  invested_capital: string
+  portfolio_value: string | null
+  unrealized_gain: string | null
+  unrealized_gain_percent: string | null
+  holdings: HoldingWithMarketData[]
+  warnings: string[]
+}
+
+export interface WatchlistItem {
+  ticker: string
+  created_at: string
+}

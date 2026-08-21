@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { analyzeTicker } from '../api/analysis'
 import { ApiError } from '../api/client'
 import type { CombinedAnalysisResult } from '../types/backend'
@@ -21,7 +21,13 @@ type ViewState =
   | { kind: 'error'; ticker: string; error: ApiError }
   | { kind: 'result'; ticker: string; result: CombinedAnalysisResult }
 
-export function AnalysisPage() {
+interface AnalysisPageProps {
+  /** Set when navigating in from elsewhere (e.g. the dashboard's search
+   * or a watchlist item) with a ticker already chosen. */
+  initialTicker?: string
+}
+
+export function AnalysisPage({ initialTicker }: AnalysisPageProps = {}) {
   const [state, setState] = useState<ViewState>({ kind: 'idle' })
 
   async function handleSearch(ticker: string) {
@@ -37,6 +43,11 @@ export function AnalysisPage() {
       })
     }
   }
+
+  useEffect(() => {
+    if (initialTicker) void handleSearch(initialTicker)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialTicker])
 
   const report = state.kind === 'result' ? state.result.report : null
 

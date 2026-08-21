@@ -7,7 +7,7 @@ services:
       POSTGRES_PASSWORD: stock_agent
       POSTGRES_DB: stock_agent
     ports:
-      - "5432:5432"
+      - "5444:5432"
     volumes:
       - db_data:/var/lib/postgresql/data
 

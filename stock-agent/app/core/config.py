@@ -75,8 +75,28 @@ class Settings(BaseSettings):
     research_default_max_results: int = Field(default=5)
     research_stale_after_days: int = Field(default=14)
 
-    # Database
-    database_url: str | None = Field(default=None)
+    # Market data provider SELECTION only — mirrors financial_data_provider's
+    # policy. "fmp" reuses the same FMP_* connection settings above (same
+    # vendor/account) but is a fully separate abstraction (`app/market/`)
+    # from FinancialDataProvider — market quotes are not financial
+    # statements and must never be mixed into that domain.
+    market_data_provider: str = Field(default="fmp")
+    market_data_connect_timeout_seconds: float = Field(default=5.0)
+    market_data_timeout_seconds: float = Field(default=10.0)
+    market_data_max_retries: int = Field(default=1)
+    market_data_recent_prices_limit: int = Field(default=30)
+
+    # Database — defaults to a local SQLite file so the app runs with zero
+    # external setup; override with a Postgres URL in production
+    # (e.g. postgresql+asyncpg://user:pass@host/db).
+    database_url: str = Field(default="sqlite+aiosqlite:///./stock_agent.db")
+
+    # Auth (Step 11). CHANGE jwt_secret_key in any non-development
+    # environment — this default is intentionally insecure so the app
+    # still runs out of the box for local development.
+    jwt_secret_key: str = Field(default="dev-insecure-secret-change-me")
+    jwt_algorithm: str = Field(default="HS256")
+    jwt_access_token_expires_minutes: int = Field(default=60 * 24 * 7)  # 7 days
 
 
 @lru_cache

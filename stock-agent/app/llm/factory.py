@@ -9,13 +9,23 @@ from app.llm.base import LLMProvider
 from app.llm.local_provider import LocalLLMProvider
 
 
+_OPENAI_COMPATIBLE_PROVIDERS = {"local", "nvidia"}
+
+
 def get_llm_provider(settings: Settings) -> LLMProvider:
-    """Build the LLMProvider configured via `settings.llm_provider`."""
-    if settings.llm_provider == "local":
+    """Build the LLMProvider configured via `settings.llm_provider`.
+
+    "nvidia" is accepted as an alias of "local": NVIDIA's hosted API
+    (integrate.api.nvidia.com) speaks the same OpenAI-compatible
+    chat-completions protocol as any other LOCAL_LLM_BASE_URL target, so
+    it's served by the same LocalLLMProvider rather than a separate
+    implementation.
+    """
+    if settings.llm_provider in _OPENAI_COMPATIBLE_PROVIDERS:
         if not settings.local_llm_base_url or not settings.local_llm_model:
             raise ValueError(
                 "LOCAL_LLM_BASE_URL and LOCAL_LLM_MODEL must be set when "
-                "LLM_PROVIDER=local"
+                f"LLM_PROVIDER={settings.llm_provider}"
             )
         return LocalLLMProvider(
             base_url=settings.local_llm_base_url,

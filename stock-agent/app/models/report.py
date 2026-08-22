@@ -44,10 +44,24 @@ class ReportWarning(BaseModel):
     message: str
 
 
+class ReportSignal(BaseModel):
+    """A deterministic, color-coded strength/risk indicator derived from
+    the already-computed score band and risk indicators (see
+    `app/reporting/signal.py`). This is a data-quality/strength signal,
+    not investment advice — it never says "buy", "sell", or "hold", and
+    it computes nothing new; it only recolors `ScoringResult` fields
+    that already exist."""
+
+    label: str  # "strong" | "moderate" | "weak" | "unavailable"
+    color: str  # "green" | "yellow" | "red" | "gray"
+    reason: str
+
+
 class ReportSummary(BaseModel):
     overall_score: Decimal | None = None
     overall_status: str = "unavailable"
     score_band: str | None = None
+    signal: ReportSignal | None = None
     investment_thesis: str | None = None
     key_takeaways: list[str] = Field(default_factory=list)
 

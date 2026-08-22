@@ -51,10 +51,23 @@ export interface ReportWarning {
   message: string
 }
 
+export type SignalLabel = 'strong' | 'moderate' | 'weak' | 'unavailable'
+export type SignalColor = 'green' | 'yellow' | 'red' | 'gray'
+
+/** A deterministic strength/risk indicator derived from the score band
+ * and risk indicators -- not investment advice, never a buy/sell/hold
+ * recommendation (see app/reporting/signal.py). */
+export interface ReportSignal {
+  label: SignalLabel
+  color: SignalColor
+  reason: string
+}
+
 export interface ReportSummary {
   overall_score: string | null
   overall_status: string
   score_band: ScoreBand | null
+  signal: ReportSignal | null
   investment_thesis: string | null
   key_takeaways: string[]
 }

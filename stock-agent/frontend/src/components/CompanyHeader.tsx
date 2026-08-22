@@ -1,5 +1,6 @@
 import type { InvestmentResearchReport } from '../types/backend'
 import { toDisplayNumber } from '../lib/format'
+import { SignalBadge } from './SignalBadge'
 
 const STATUS_LABEL: Record<string, string> = {
   calculated: 'Complete',
@@ -29,7 +30,8 @@ export function CompanyHeader({ report }: { report: InvestmentResearchReport }) 
         </p>
       </div>
 
-      <div className="flex gap-6 text-right">
+      <div className="flex items-start gap-6 text-right">
+        <SignalBadge signal={report.summary.signal} />
         {price !== null && (
           <div>
             <div className="text-xs uppercase tracking-wide text-[var(--color-text-faint)]">Current Price</div>

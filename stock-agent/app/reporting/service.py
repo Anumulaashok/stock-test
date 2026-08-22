@@ -30,6 +30,7 @@ from app.models.report import (
     ReportScoreComponent,
     ReportScoringSection,
     ReportStatus,
+    ReportSignal,
     ReportSummary,
     ReportValuationMethod,
     ReportValuationSection,
@@ -42,6 +43,7 @@ from app.pipeline.models import CombinedAnalysisResult, PipelineStatus
 from app.reporting.constants import REPORT_VERSION
 from app.reporting.evidence import filter_evidence, valid_report_evidence_names
 from app.reporting.formatter import format_currency, format_metric_value, format_percent
+from app.reporting.signal import compute_signal
 from app.reporting.warnings import collect_warnings
 from app.scoring.bands import score_band
 from app.scoring.thresholds import (
@@ -138,6 +140,7 @@ class ReportService:
             overall_score=scoring.overall_score if scoring else None,
             overall_status=scoring.overall_status.value if scoring else "unavailable",
             score_band=scoring.band.value if scoring and scoring.band else None,
+            signal=compute_signal(scoring),
             investment_thesis=thesis,
             key_takeaways=takeaways,
         )

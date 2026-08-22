@@ -10,6 +10,7 @@ export function buildReport(overrides: Partial<InvestmentResearchReport> = {}): 
       overall_score: '78',
       overall_status: 'calculated',
       score_band: 'good',
+      signal: { label: 'strong', color: 'green', reason: 'Overall score is good with no high-severity risk indicators.' },
       investment_thesis: 'Acme Corp shows strong profitability.',
       key_takeaways: ['ROE is a strength'],
     },

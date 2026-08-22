@@ -33,7 +33,7 @@ async def analyze(
             error=AnalystError(code=AnalystErrorCode.LLM_UNAVAILABLE, message=str(exc)),
         )
 
-    service = AnalystService(provider)
+    service = AnalystService(provider, max_response_tokens=settings.analyst_max_response_tokens)
     return await service.analyze(
         financial_analysis=request.financial_analysis,
         valuation=request.valuation,

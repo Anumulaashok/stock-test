@@ -24,6 +24,17 @@ def test_factory_builds_local_provider(settings):
     assert isinstance(provider, LocalLLMProvider)
 
 
+def test_factory_wires_reasoning_mode_from_settings(settings):
+    settings.llm_provider = "nvidia"
+    settings.local_llm_reasoning_mode = "reasoning_effort"
+    settings.local_llm_reasoning_effort = "low"
+    settings.local_llm_json_mode = True
+    provider = get_llm_provider(settings)
+    assert provider._reasoning_mode == "reasoning_effort"
+    assert provider._reasoning_effort == "low"
+    assert provider._json_mode is True
+
+
 def test_factory_raises_when_local_config_missing():
     from app.core.config import Settings
 
@@ -74,6 +85,78 @@ async def test_generate_sends_bearer_token_and_chat_template_kwargs():
     assert body["model"] == "qwen3-8b"
     assert body["max_tokens"] == 32
     assert body["chat_template_kwargs"] == {"enable_thinking": False}
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_generate_sends_reasoning_effort_in_reasoning_effort_mode():
+    provider = LocalLLMProvider(
+        base_url="http://test-llm:8080/v1",
+        model="openai/gpt-oss-20b",
+        reasoning_mode="reasoning_effort",
+        reasoning_effort="low",
+    )
+    route = respx.post("http://test-llm:8080/v1/chat/completions").mock(
+        return_value=httpx.Response(200, json={"choices": [{"message": {"content": "hello"}}]})
+    )
+
+    # A per-call enable_thinking override must be ignored in this mode --
+    # the backend doesn't understand that key at all.
+    await provider.generate("hi", enable_thinking=False)
+
+    body = json.loads(route.calls.last.request.content)
+    assert body["chat_template_kwargs"] == {"reasoning_effort": "low"}
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_generate_sends_response_format_when_json_mode_enabled():
+    provider = LocalLLMProvider(
+        base_url="http://test-llm:8080/v1", model="test-model", json_mode=True
+    )
+    route = respx.post("http://test-llm:8080/v1/chat/completions").mock(
+        return_value=httpx.Response(200, json={"choices": [{"message": {"content": "hello"}}]})
+    )
+
+    await provider.generate("hi")
+
+    body = json.loads(route.calls.last.request.content)
+    assert body["response_format"] == {"type": "json_object"}
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_generate_omits_response_format_when_json_mode_disabled():
+    provider = LocalLLMProvider(base_url="http://test-llm:8080/v1", model="test-model")
+    route = respx.post("http://test-llm:8080/v1/chat/completions").mock(
+        return_value=httpx.Response(200, json={"choices": [{"message": {"content": "hello"}}]})
+    )
+
+    await provider.generate("hi")
+
+    body = json.loads(route.calls.last.request.content)
+    assert "response_format" not in body
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_generate_sends_no_chat_template_kwargs_in_none_mode():
+    provider = LocalLLMProvider(
+        base_url="http://test-llm:8080/v1", model="test-model", reasoning_mode="none"
+    )
+    route = respx.post("http://test-llm:8080/v1/chat/completions").mock(
+        return_value=httpx.Response(200, json={"choices": [{"message": {"content": "hello"}}]})
+    )
+
+    await provider.generate("hi")
+
+    body = json.loads(route.calls.last.request.content)
+    assert "chat_template_kwargs" not in body
+
+
+def test_local_provider_rejects_unsupported_reasoning_mode():
+    with pytest.raises(ValueError):
+        LocalLLMProvider(base_url="http://test-llm:8080/v1", model="test-model", reasoning_mode="bogus")
 
 
 @pytest.mark.asyncio

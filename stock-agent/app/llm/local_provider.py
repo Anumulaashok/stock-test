@@ -32,16 +32,27 @@ class LocalLLMProvider(LLMProvider):
         connect_timeout_seconds: float = 5.0,
         timeout_seconds: float = 30.0,
         enable_thinking: bool = False,
+        reasoning_mode: str = "thinking",
+        reasoning_effort: str = "low",
+        json_mode: bool = False,
     ) -> None:
         if not base_url:
             raise ValueError("base_url is required for LocalLLMProvider")
         if not model:
             raise ValueError("model is required for LocalLLMProvider")
+        if reasoning_mode not in ("thinking", "reasoning_effort", "none"):
+            raise ValueError(
+                f"Unsupported reasoning_mode: {reasoning_mode!r} "
+                '(expected "thinking", "reasoning_effort", or "none")'
+            )
 
         self._base_url = base_url.rstrip("/")
         self._model = model
         self._api_key = api_key
         self._enable_thinking = enable_thinking
+        self._reasoning_mode = reasoning_mode
+        self._reasoning_effort = reasoning_effort
+        self._json_mode = json_mode
         self._timeout = httpx.Timeout(
             timeout=timeout_seconds, connect=connect_timeout_seconds
         )
@@ -51,6 +62,22 @@ class LocalLLMProvider(LLMProvider):
         if self._api_key:
             headers["Authorization"] = f"Bearer {self._api_key}"
         return headers
+
+    def _chat_template_kwargs(self, enable_thinking: bool | None) -> dict[str, Any]:
+        """The "don't think out loud" instruction, in whatever shape the
+        configured `reasoning_mode` expects. Backends disagree on this:
+        vLLM/Qwen servers honor `enable_thinking`; OpenAI gpt-oss-style
+        reasoning models (as served by e.g. NVIDIA's hosted API) ignore
+        it and only honor `reasoning_effort`."""
+        if self._reasoning_mode == "thinking":
+            return {
+                "enable_thinking": (
+                    self._enable_thinking if enable_thinking is None else enable_thinking
+                )
+            }
+        if self._reasoning_mode == "reasoning_effort":
+            return {"reasoning_effort": self._reasoning_effort}
+        return {}
 
     async def generate(
         self,
@@ -68,15 +95,15 @@ class LocalLLMProvider(LLMProvider):
         payload: dict[str, Any] = {
             "model": self._model,
             "messages": messages,
-            "chat_template_kwargs": {
-                "enable_thinking": (
-                    self._enable_thinking if enable_thinking is None else enable_thinking
-                )
-            },
             **kwargs,
         }
+        chat_template_kwargs = self._chat_template_kwargs(enable_thinking)
+        if chat_template_kwargs:
+            payload["chat_template_kwargs"] = chat_template_kwargs
         if max_tokens is not None:
             payload["max_tokens"] = max_tokens
+        if self._json_mode:
+            payload["response_format"] = {"type": "json_object"}
 
         try:
             async with httpx.AsyncClient(timeout=self._timeout) as client:

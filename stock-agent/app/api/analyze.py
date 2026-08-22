@@ -16,6 +16,8 @@ from app.data.factory import get_financial_data_provider
 from app.data.service import FinancialDataService
 from app.financial.service import FinancialAnalysisService
 from app.llm.factory import get_llm_provider
+from app.market.factory import get_market_data_provider
+from app.market.service import MarketDataService
 from app.models.analyst import AnalystError, AnalystErrorCode, AnalystResult
 from app.pipeline.models import (
     AnalysisRequest,
@@ -69,10 +71,26 @@ def _build_research_service(settings: Settings) -> ResearchService | None:
     )
 
 
+def _build_market_data_service(settings: Settings) -> MarketDataService | None:
+    """Returns `None` (not an error) when unconfigured -- Step 4: a live
+    price is a nice-to-have for ticker analysis, not a requirement.
+    Mirrors `_build_research_service`'s policy exactly."""
+    try:
+        provider = get_market_data_provider(settings)
+    except ValueError as exc:
+        logger.info("Market data provider not configured: %s", exc)
+        return None
+    return MarketDataService(
+        provider, default_recent_prices_limit=settings.market_data_recent_prices_limit
+    )
+
+
 def _build_pipeline(settings: Settings) -> AnalysisPipelineService:
     try:
         provider = get_llm_provider(settings)
-        analyst_service = AnalystService(provider)
+        analyst_service = AnalystService(
+            provider, max_response_tokens=settings.analyst_max_response_tokens
+        )
     except ValueError as exc:
         logger.warning("Analyst LLM provider misconfigured: %s", exc)
         analyst_service = _MisconfiguredAnalystService(str(exc))
@@ -122,6 +140,9 @@ async def analyze_ticker(
         )
 
     pipeline = _build_pipeline(settings)
-    application_service = AnalysisApplicationService(FinancialDataService(provider), pipeline)
+    market_data_service = _build_market_data_service(settings)
+    application_service = AnalysisApplicationService(
+        FinancialDataService(provider), pipeline, market_data_service
+    )
     result = await application_service.analyze_by_ticker(request)
     return _with_report_if_requested(result, request.include_report)

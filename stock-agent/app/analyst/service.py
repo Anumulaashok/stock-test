@@ -23,17 +23,26 @@ from app.models.valuation import ValuationRange
 
 logger = logging.getLogger(__name__)
 
-# Keep responses compact given the CPU-only ~5-8 tok/s reference server —
-# at the low end, even 700 tokens can take well over a minute.
+# Default response budget: suits the CPU-only ~5-8 tok/s reference
+# server (no reasoning overhead) — at the low end, even 700 tokens can
+# take well over a minute. A reasoning model needs a much larger budget
+# (see `Settings.analyst_max_response_tokens`); callers pass that in
+# rather than relying on this default.
 _MAX_RESPONSE_TOKENS = 700
 
 
 class AnalystService:
     """Generates a narrative `AnalystResponse` over deterministic results."""
 
-    def __init__(self, llm_provider: LLMProvider, max_retries: int = 1) -> None:
+    def __init__(
+        self,
+        llm_provider: LLMProvider,
+        max_retries: int = 1,
+        max_response_tokens: int = _MAX_RESPONSE_TOKENS,
+    ) -> None:
         self._llm_provider = llm_provider
         self._max_retries = max_retries
+        self._max_response_tokens = max_response_tokens
 
     async def analyze(
         self,
@@ -54,7 +63,10 @@ class AnalystService:
         for attempt in range(self._max_retries + 1):
             try:
                 raw = await self._llm_provider.generate(
-                    prompt, system_prompt=system_prompt, max_tokens=_MAX_RESPONSE_TOKENS, enable_thinking=False,
+                    prompt,
+                    system_prompt=system_prompt,
+                    max_tokens=self._max_response_tokens,
+                    enable_thinking=False,
                 )
             except LLMProviderError as exc:
                 code = (

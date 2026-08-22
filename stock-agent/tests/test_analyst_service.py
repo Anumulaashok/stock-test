@@ -109,6 +109,26 @@ async def test_service_sends_system_prompt_and_user_prompt():
 
 
 @pytest.mark.asyncio
+async def test_service_uses_default_max_response_tokens():
+    provider = FakeLLMProvider(responses=[json.dumps(VALID_RESPONSE)])
+    service = AnalystService(provider)
+
+    await service.analyze(_financial_analysis(), None, _scoring())
+
+    assert provider.calls[0]["max_tokens"] == 700
+
+
+@pytest.mark.asyncio
+async def test_service_uses_configured_max_response_tokens():
+    provider = FakeLLMProvider(responses=[json.dumps(VALID_RESPONSE)])
+    service = AnalystService(provider, max_response_tokens=2200)
+
+    await service.analyze(_financial_analysis(), None, _scoring())
+
+    assert provider.calls[0]["max_tokens"] == 2200
+
+
+@pytest.mark.asyncio
 async def test_service_llm_timeout_returns_structured_error():
     provider = FakeLLMProvider(error=LLMProviderError("Local LLM request timed out"))
     service = AnalystService(provider)

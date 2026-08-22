@@ -37,6 +37,25 @@ class Settings(BaseSettings):
     # analyst response (Step 5) can take well over the old 30s default.
     local_llm_timeout_seconds: float = Field(default=120.0)
     local_llm_enable_thinking: bool = Field(default=False)
+    # How the "don't think out loud" instruction is expressed to the
+    # server's chat template, since this isn't standardized across
+    # OpenAI-compatible backends:
+    # - "thinking": send chat_template_kwargs.enable_thinking (vLLM/Qwen
+    #   servers honor this; it's the historical default).
+    # - "reasoning_effort": send chat_template_kwargs.reasoning_effort
+    #   (OpenAI gpt-oss-style reasoning models, e.g. NVIDIA's hosted
+    #   openai/gpt-oss-20b, ignore enable_thinking entirely and always
+    #   reason at full effort unless told otherwise via this field).
+    # - "none": send neither key.
+    local_llm_reasoning_mode: str = Field(default="thinking")
+    local_llm_reasoning_effort: str = Field(default="low")
+    # Requests the server constrain decoding to valid JSON syntax
+    # (OpenAI-style `response_format: {"type": "json_object"}`).
+    # Off by default since not every OpenAI-compatible server recognizes
+    # this field; NVIDIA's hosted API does, and without it gpt-oss-20b
+    # occasionally emits free-form text that isn't valid JSON (e.g. an
+    # unescaped/curly quote breaking a string) even when not truncated.
+    local_llm_json_mode: bool = Field(default=False)
 
     # External financial data provider SELECTION only — a provider
     # identifier ("fmp", "indianapi"), never a URL. Each provider's own
@@ -97,6 +116,14 @@ class Settings(BaseSettings):
     jwt_secret_key: str = Field(default="dev-insecure-secret-change-me")
     jwt_algorithm: str = Field(default="HS256")
     jwt_access_token_expires_minutes: int = Field(default=60 * 24 * 7)  # 7 days
+
+    # AI analyst response budget. 700 suits the CPU-only Qwen3-8B
+    # reference server (no reasoning overhead). A reasoning model (e.g.
+    # LLM_PROVIDER=nvidia's openai/gpt-oss-20b) spends part of this
+    # budget on internal chain-of-thought before writing the final JSON
+    # answer, so it needs a substantially larger value or every response
+    # gets truncated to empty.
+    analyst_max_response_tokens: int = Field(default=700)
 
 
 @lru_cache

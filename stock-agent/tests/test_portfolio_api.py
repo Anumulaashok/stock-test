@@ -1,6 +1,7 @@
 from decimal import Decimal
 
 from app.api.portfolio import get_portfolio_service
+from app.core.config import get_settings
 from app.main import app
 from app.models.market import MarketDataError, MarketDataErrorCode, MarketQuote, MarketSnapshot, MarketSnapshotResult, MarketStatus, PriceFreshness
 from app.portfolio.service import PortfolioService
@@ -235,7 +236,14 @@ def test_delete_nonexistent_watchlist_item_returns_404(db_client):
 # --- Summary / market-value calculations -----------------------------------------
 
 
-def test_summary_with_no_market_provider_reports_unavailable_prices(db_client):
+def test_summary_with_no_market_provider_reports_unavailable_prices(db_client, monkeypatch):
+    # Explicitly disable the market data provider rather than relying on
+    # FMP_API_KEY being absent from the ambient environment -- it may well
+    # be configured for real (Step 4 uses it), and this test must never
+    # depend on that, let alone make a live call to the real FMP API.
+    monkeypatch.setenv("FMP_API_KEY", "")
+    get_settings.cache_clear()
+
     headers = _auth_headers(db_client)
     db_client.post(
         "/api/v1/portfolio/holdings",
@@ -244,6 +252,7 @@ def test_summary_with_no_market_provider_reports_unavailable_prices(db_client):
     )
 
     response = db_client.get("/api/v1/portfolio/summary", headers=headers)
+    get_settings.cache_clear()
     assert response.status_code == 200
     body = response.json()
     assert Decimal(body["invested_capital"]) == Decimal("1500")

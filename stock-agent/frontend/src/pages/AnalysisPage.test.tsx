@@ -1,9 +1,10 @@
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { describe, it, expect, vi } from 'vitest'
+import { beforeEach, describe, it, expect, vi } from 'vitest'
 import { AnalysisPage } from './AnalysisPage'
 import { buildReport } from '../test/fixtures'
 import * as analysisApi from '../api/analysis'
+import * as searchApi from '../api/search'
 import { ApiError } from '../api/client'
 import type { CombinedAnalysisResult } from '../types/backend'
 
@@ -13,6 +14,13 @@ async function search(ticker: string) {
 }
 
 describe('AnalysisPage', () => {
+  beforeEach(() => {
+    // The search bar's own autocomplete suggestions are covered by
+    // SearchBar.test.tsx -- keep them out of the way here.
+    vi.spyOn(searchApi, 'searchStocks').mockResolvedValue([])
+  })
+
+
   it('shows a loading state, then the successful result', async () => {
     const result: CombinedAnalysisResult = {
       company: { name: 'Acme Corp', ticker: 'ACME' },

@@ -35,6 +35,9 @@ def collect_warnings(combined: CombinedAnalysisResult) -> list[ReportWarning]:
             add("research", combined.research.error.message, code=combined.research.error.code.value)
     if combined.analyst and combined.analyst.status != "success" and combined.analyst.error:
         add("analyst", combined.analyst.error.message, code=combined.analyst.error.code.value)
+    if combined.forecast:
+        for message in combined.forecast.warnings:
+            add("forecast", message)
 
     # Anything the pipeline synthesized that isn't already captured above
     # (e.g. "no research service configured", a failed-stage message).

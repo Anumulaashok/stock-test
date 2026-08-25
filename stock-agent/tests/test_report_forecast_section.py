@@ -110,6 +110,17 @@ def test_forecast_section_carries_valuation_scenarios():
     assert scenarios["base"].value_per_share == d(110)
 
 
+def test_forecast_warnings_are_tagged_with_forecast_source_not_pipeline():
+    forecast = ForecastResult(company="Acme Corp", warnings=["statement forecasts are unavailable"])
+    combined = _base_combined(forecast)
+
+    report = ReportService(clock=_clock).generate(combined)
+
+    matching = [w for w in report.warnings if w.message == "statement forecasts are unavailable"]
+    assert len(matching) == 1
+    assert matching[0].source == "forecast"
+
+
 def test_forecast_section_carries_price_trend_and_disclaimer():
     forecast = ForecastResult(
         company="Acme Corp",

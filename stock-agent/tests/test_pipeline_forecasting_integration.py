@@ -95,6 +95,26 @@ async def test_no_forecasting_service_configured_leaves_forecast_none():
 
 
 @pytest.mark.asyncio
+async def test_projection_years_from_request_reaches_forecasting_service():
+    forecasting_service = FakeForecastingService(result=_empty_forecast_result())
+    pipeline = _pipeline(forecasting_service=forecasting_service)
+
+    await pipeline.analyze(_request(projection_years=3))
+
+    assert forecasting_service.calls[0]["projection_years"] == 3
+
+
+@pytest.mark.asyncio
+async def test_no_projection_years_leaves_forecasting_service_default():
+    forecasting_service = FakeForecastingService(result=_empty_forecast_result())
+    pipeline = _pipeline(forecasting_service=forecasting_service)
+
+    await pipeline.analyze(_request())
+
+    assert "projection_years" not in forecasting_service.calls[0]
+
+
+@pytest.mark.asyncio
 async def test_forecasting_service_result_flows_into_combined_result():
     forecasting_service = FakeForecastingService(result=_empty_forecast_result())
     pipeline = _pipeline(forecasting_service=forecasting_service)

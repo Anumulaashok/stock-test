@@ -39,7 +39,7 @@ class ReportWarning(BaseModel):
     future UI can explain *why* something is missing rather than just
     that it is."""
 
-    source: str  # "financial_analysis" | "valuation" | "scoring" | "research" | "analyst" | "pipeline" | "report"
+    source: str  # "financial_analysis" | "valuation" | "scoring" | "forecast" | "research" | "analyst" | "pipeline" | "report"
     code: str | None = None
     message: str
 

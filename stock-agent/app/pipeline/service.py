@@ -112,13 +112,16 @@ class AnalysisPipelineService:
         forecast = None
         if self._forecasting_service is not None:
             try:
-                forecast = self._forecasting_service.forecast(
+                forecast_kwargs = dict(
                     company_financials=request.company_financials,
                     financial_analysis=financial_analysis,
                     valuation_input=valuation_input,
                     recent_prices=request.recent_prices,
                     ticker=request.ticker,
                 )
+                if request.projection_years is not None:
+                    forecast_kwargs["projection_years"] = request.projection_years
+                forecast = self._forecasting_service.forecast(**forecast_kwargs)
             except Exception as exc:  # noqa: BLE001 - forecasting is optional; never fail the pipeline for it
                 logger.error("Forecasting stage raised unexpectedly: %s", exc)
                 forecast = None

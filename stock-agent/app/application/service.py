@@ -15,6 +15,11 @@ field `ValuationService`/`build_valuation_input` already consume, and
 every downstream valuation/scoring behavior for a missing price is
 exactly what already existed before this change — no new "unavailable"
 handling was added, because none was needed.
+
+Also resolves `recent_prices` the same way (explicit request value
+always wins, otherwise fetched from `MarketDataService`) so the
+forecasting stage's price-trend extrapolation has historical prices to
+work with without every caller needing to supply them.
 """
 
 import logging
@@ -23,7 +28,7 @@ from decimal import Decimal
 from app.data.models import CompanyIdentifier
 from app.data.service import FinancialDataService
 from app.market.service import MarketDataService
-from app.models.market import PriceFreshness
+from app.models.market import HistoricalPricePoint, MarketSnapshot, PriceFreshness
 from app.pipeline.models import (
     AnalysisRequest,
     CombinedAnalysisResult,
@@ -74,15 +79,16 @@ class AnalysisApplicationService:
             )
 
         data = fetch_result.data
-        current_share_price, market_warning = await self._resolve_current_share_price(request)
+        current_share_price, recent_prices, market_warning = await self._resolve_market_data(request)
 
         analysis_request = AnalysisRequest(
             company_name=data.company_financials.company_name,
             ticker=request.ticker,
             company_financials=data.company_financials,
             **{
-                **request.model_dump(exclude={"ticker", "current_share_price"}),
+                **request.model_dump(exclude={"ticker", "current_share_price", "recent_prices"}),
                 "current_share_price": current_share_price,
+                "recent_prices": recent_prices,
             },
         )
 
@@ -92,15 +98,18 @@ class AnalysisApplicationService:
             warnings = warnings + [market_warning]
         return result.model_copy(update={"warnings": warnings})
 
-    async def _resolve_current_share_price(
+    async def _resolve_market_data(
         self, request: TickerAnalysisRequest
-    ) -> tuple[Decimal | None, str | None]:
-        """An explicit `current_share_price` on the request always wins —
-        this preserves the existing override behavior callers already
-        rely on. Otherwise, if a `MarketDataService` is configured, fetch
-        a live quote through it (never a direct HTTP call, never a second
-        FMP client) and use its price only when the quote is LIVE or
-        DELAYED.
+    ) -> tuple[Decimal | None, list[HistoricalPricePoint], str | None]:
+        """An explicit `current_share_price` / `recent_prices` on the
+        request always wins — this preserves the existing override
+        behavior callers already rely on. Otherwise, if a
+        `MarketDataService` is configured, fetch one snapshot (quote +
+        recent prices) through it (never a direct HTTP call, never a
+        second FMP client). The quote's price is used only when the
+        quote is LIVE or DELAYED; recent prices are supplementary and
+        used regardless of quote freshness — the forecasting stage's
+        trend fit treats a short/empty history as unavailable itself.
 
         Never raises: a market-data failure (provider down, rate limited,
         auth failure, or anything unexpected including a network-layer
@@ -109,28 +118,53 @@ class AnalysisApplicationService:
         scoring must remain available with the price simply left unset,
         exactly like any other missing valuation input.
         """
-        if request.current_share_price is not None:
-            return request.current_share_price, None
+        want_price = request.current_share_price is None
+        want_recent_prices = not request.recent_prices and request.include_price_trend_forecast
+
+        if not want_price and not want_recent_prices:
+            return request.current_share_price, request.recent_prices, None
         if self._market_data_service is None:
-            return None, None
+            return request.current_share_price, request.recent_prices, None
+
+        unavailable_message = (
+            "Current market price is unavailable for {ticker}{detail}"
+            if want_price
+            else "Price history is unavailable for {ticker}{detail}"
+        )
 
         try:
-            result = await self._market_data_service.get_quote(request.ticker)
-        except Exception as exc:  # noqa: BLE001 - market price is optional; never fail ticker analysis for it
-            logger.warning("Market data service raised unexpectedly for %s: %s", request.ticker, exc)
-            return None, f"Current market price is unavailable for {request.ticker}."
-
-        if result.status != "success" or result.snapshot is None or result.snapshot.quote is None:
-            detail = result.error.message if result.error else "no quote was returned"
-            logger.info("Market quote unavailable for %s: %s", request.ticker, detail)
-            return None, f"Current market price is unavailable for {request.ticker}: {detail}"
-
-        quote = result.snapshot.quote
-        if quote.current_price is None:
-            return None, f"Current market price is unavailable for {request.ticker}."
-        if quote.freshness not in _USABLE_FRESHNESS:
-            return None, (
-                f"Current market price for {request.ticker} is {quote.freshness.value} and "
-                "was not used for valuation."
+            result = await self._market_data_service.get_snapshot(
+                request.ticker, include_recent_prices=want_recent_prices
             )
-        return quote.current_price, None
+        except Exception as exc:  # noqa: BLE001 - market data is optional; never fail ticker analysis for it
+            logger.warning("Market data service raised unexpectedly for %s: %s", request.ticker, exc)
+            return (
+                request.current_share_price,
+                request.recent_prices,
+                unavailable_message.format(ticker=request.ticker, detail="."),
+            )
+
+        if result.status != "success" or result.snapshot is None:
+            detail = result.error.message if result.error else "no snapshot was returned"
+            logger.info("Market snapshot unavailable for %s: %s", request.ticker, detail)
+            return (
+                request.current_share_price,
+                request.recent_prices,
+                unavailable_message.format(ticker=request.ticker, detail=f": {detail}"),
+            )
+
+        snapshot: MarketSnapshot = result.snapshot
+        recent_prices = (
+            snapshot.recent_prices if want_recent_prices else request.recent_prices
+        )
+
+        if not want_price:
+            return request.current_share_price, recent_prices, None
+        if snapshot.quote is None or snapshot.quote.current_price is None:
+            return None, recent_prices, f"Current market price is unavailable for {request.ticker}."
+        if snapshot.quote.freshness not in _USABLE_FRESHNESS:
+            return None, recent_prices, (
+                f"Current market price for {request.ticker} is {snapshot.quote.freshness.value} "
+                "and was not used for valuation."
+            )
+        return snapshot.quote.current_price, recent_prices, None

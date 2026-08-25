@@ -9,6 +9,7 @@ import { StatusBanner } from '../components/StatusBanner'
 import { CompanyHeader } from '../components/CompanyHeader'
 import { ScoreOverview } from '../components/ScoreOverview'
 import { ValuationSection } from '../components/ValuationSection'
+import { ForecastSection } from '../components/ForecastSection'
 import { FinancialSection } from '../components/FinancialSection'
 import { RiskSection } from '../components/RiskSection'
 import { ResearchSection } from '../components/ResearchSection'
@@ -71,6 +72,7 @@ export function AnalysisPage({ initialTicker }: AnalysisPageProps = {}) {
           <CompanyHeader report={report} />
           <ScoreOverview scoring={report.scoring} />
           <ValuationSection valuation={report.valuation} />
+          <ForecastSection forecast={report.forecast} />
           <RiskSection risk={report.risk} />
           <AnalystSection analyst={report.analyst} />
           <FinancialSection financials={report.financials} />

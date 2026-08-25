@@ -7,6 +7,10 @@ import type { CombinedAnalysisResult, TickerAnalysisRequest } from '../types/bac
  * knows the analysis endpoint's URL/shape.
  */
 export async function analyzeTicker(ticker: string): Promise<CombinedAnalysisResult> {
-  const body: TickerAnalysisRequest = { ticker: ticker.trim().toUpperCase(), include_report: true }
+  const body: TickerAnalysisRequest = {
+    ticker: ticker.trim().toUpperCase(),
+    include_report: true,
+    include_price_trend_forecast: true,
+  }
   return postJson<CombinedAnalysisResult>('/api/v1/analyze/ticker', body)
 }

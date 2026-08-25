@@ -41,9 +41,9 @@ DEFAULT_PROJECTION_YEARS = 5
 DEFAULT_PROJECTION_DAYS = 30
 
 _INCOME_STATEMENT_METRICS = [
-    ("revenue", "revenue", "USD"),
-    ("net_income", "net_income", "USD"),
-    ("eps", "eps", "USD"),
+    ("revenue", "USD"),
+    ("net_income", "USD"),
+    ("eps", "USD"),
 ]
 
 
@@ -110,7 +110,7 @@ class ForecastingService:
             self._project_income_field(
                 field_name, unit, income_by_period, first_period, last_period, periods_elapsed, projection_years
             )
-            for field_name, _, unit in _INCOME_STATEMENT_METRICS
+            for field_name, unit in _INCOME_STATEMENT_METRICS
         ]
         metrics.append(
             self._project_free_cash_flow(financial_analysis, first_period, last_period, projection_years)
@@ -252,7 +252,10 @@ class ForecastingService:
         points = [
             PriceTrendPoint(
                 day_offset=day,
-                projected_price=intercept + slope * (last_index + day),
+                # A share price cannot go negative; a steep downtrend
+                # extrapolated far enough is floored at zero rather than
+                # emitting an economically meaningless negative value.
+                projected_price=max(Decimal(0), intercept + slope * (last_index + day)),
             )
             for day in range(1, projection_days + 1)
         ]

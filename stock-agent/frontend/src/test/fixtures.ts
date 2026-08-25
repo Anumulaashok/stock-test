@@ -62,6 +62,17 @@ export function buildReport(overrides: Partial<InvestmentResearchReport> = {}): 
       low: [],
       informational: [{ name: 'negative_fcf', severity: null, status: 'calculated', value: '250', threshold: '0', reason: 'free cash flow is not negative' }],
     },
+    forecast: {
+      source: 'forecast',
+      available: false,
+      projection_years: null,
+      financial_metrics: [],
+      valuation_scenarios: [],
+      price_trend: [],
+      price_trend_status: null,
+      price_trend_reason: null,
+      price_trend_disclaimer: null,
+    },
     research: {
       source: 'research',
       available: true,

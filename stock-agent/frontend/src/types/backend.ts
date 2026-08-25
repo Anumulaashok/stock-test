@@ -185,6 +185,54 @@ export interface ReportEvidence {
   research: string[]
 }
 
+// --- Forecast (deterministic extrapolation, never a recommendation) ---------------
+
+export interface ReportForecastYear {
+  year_offset: number
+  value: string | null
+  status: MetricStatus
+  formatted_value: string | null
+}
+
+export interface ReportForecastMetric {
+  name: string
+  unit: string | null
+  base_period: string | null
+  base_value: string | null
+  historical_cagr_percent: string | null
+  status: MetricStatus
+  reason: string | null
+  formatted_historical_cagr: string | null
+  projections: ReportForecastYear[]
+}
+
+export interface ReportValuationScenario {
+  scenario: string
+  fcf_growth_rate: string | null
+  value_per_share: string | null
+  status: MetricStatus
+  reason: string | null
+  formatted_value_per_share: string | null
+}
+
+export interface ReportPriceTrendPoint {
+  day_offset: number
+  projected_price: string | null
+  formatted_projected_price: string | null
+}
+
+export interface ReportForecastSection {
+  source: string
+  available: boolean
+  projection_years: number | null
+  financial_metrics: ReportForecastMetric[]
+  valuation_scenarios: ReportValuationScenario[]
+  price_trend: ReportPriceTrendPoint[]
+  price_trend_status: MetricStatus | null
+  price_trend_reason: string | null
+  price_trend_disclaimer: string | null
+}
+
 export interface InvestmentResearchReport {
   company: ReportCompany
   status: ReportStatus
@@ -193,6 +241,7 @@ export interface InvestmentResearchReport {
   valuation: ReportValuationSection | null
   scoring: ReportScoringSection | null
   risk: ReportRiskSection | null
+  forecast: ReportForecastSection | null
   research: ReportResearchSection | null
   analyst: ReportAnalystSection | null
   evidence: ReportEvidence
@@ -260,6 +309,7 @@ export interface CombinedAnalysisResult {
 export interface TickerAnalysisRequest {
   ticker: string
   include_report: true
+  include_price_trend_forecast?: boolean
 }
 
 // --- Auth / portfolio (Step 11) -----------------------------------------------------

@@ -101,11 +101,14 @@ class FakeMarketDataService:
         self._raises = raises
         self.received_ticker = None
 
-    async def get_quote(self, ticker):
+    async def get_snapshot(self, ticker, include_recent_prices=True):
         self.received_ticker = ticker
         if self._raises:
             raise self._raises
         return self._result
+
+    async def get_quote(self, ticker):
+        return await self.get_snapshot(ticker, include_recent_prices=False)
 
 
 def _quote_result(price="180.00", freshness=PriceFreshness.LIVE) -> MarketSnapshotResult:

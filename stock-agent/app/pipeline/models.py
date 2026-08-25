@@ -14,6 +14,8 @@ from pydantic import BaseModel, Field
 from app.models.analyst import AnalystResult
 from app.models.financial_results import FinancialAnalysisResult
 from app.models.financial_statements import CompanyFinancials
+from app.models.forecasting import ForecastResult
+from app.models.market import HistoricalPricePoint
 from app.models.report import InvestmentResearchReport
 from app.models.research import ResearchResult
 from app.models.scoring import ScoringResult
@@ -61,6 +63,19 @@ class ValuationAssumptions(BaseModel):
     target_pe: Decimal | None = None
     target_ev_ebitda: Decimal | None = None
     target_pfcf: Decimal | None = None
+
+    recent_prices: list[HistoricalPricePoint] = Field(
+        default_factory=list,
+        description="Optional recent closing-price history, used only by the "
+        "forecasting stage's price-trend extrapolation. An explicit value here "
+        "always wins over any fetch.",
+    )
+    include_price_trend_forecast: bool = Field(
+        default=False,
+        description="Opt-in, like `research.enabled`: fetching price history is "
+        "an extra provider call, so ticker analysis only makes it when the "
+        "caller actually wants a price-trend forecast.",
+    )
 
     research: ResearchOptions = Field(default_factory=ResearchOptions)
     include_report: bool = Field(
@@ -122,6 +137,7 @@ class CombinedAnalysisResult(BaseModel):
     financial_analysis: FinancialAnalysisResult | None = None
     valuation: ValuationRange | None = None
     scoring: ScoringResult | None = None
+    forecast: ForecastResult | None = None
     research: ResearchResult | None = None
     analyst: AnalystResult | None = None
     report: InvestmentResearchReport | None = None

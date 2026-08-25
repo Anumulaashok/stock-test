@@ -15,6 +15,7 @@ from app.core.config import Settings, get_settings
 from app.data.factory import get_financial_data_provider
 from app.data.service import FinancialDataService
 from app.financial.service import FinancialAnalysisService
+from app.forecasting.service import ForecastingService
 from app.llm.factory import get_llm_provider
 from app.market.factory import get_market_data_provider
 from app.market.service import MarketDataService
@@ -101,6 +102,7 @@ def _build_pipeline(settings: Settings) -> AnalysisPipelineService:
         scoring_service=ScoringService(),
         analyst_service=analyst_service,
         research_service=_build_research_service(settings),
+        forecasting_service=ForecastingService(),
     )
 
 

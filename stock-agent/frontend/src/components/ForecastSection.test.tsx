@@ -25,10 +25,26 @@ function forecastFixture(overrides: Partial<ReportForecastSection> = {}): Report
       { scenario: 'base', fcf_growth_rate: '0.07', value_per_share: '110', status: 'calculated', reason: null, formatted_value_per_share: '$110.00' },
       { scenario: 'bull', fcf_growth_rate: '0.09', value_per_share: '135', status: 'calculated', reason: null, formatted_value_per_share: '$135.00' },
     ],
-    price_trend: [{ day_offset: 1, projected_price: '101', formatted_projected_price: '$101.00' }],
+    price_trend: [{ day_offset: 1, date: '2026-08-28', projected_price: '101', formatted_projected_price: '$101.00' }],
     price_trend_status: 'calculated',
     price_trend_reason: null,
     price_trend_disclaimer: 'Naive statistical extrapolation... not a prediction of future performance.',
+    moving_averages: [
+      { window: 50, value: '105', status: 'calculated', reason: null, formatted_value: '$105.00' },
+      { window: 200, value: '95', status: 'calculated', reason: null, formatted_value: '$95.00' },
+    ],
+    crossover: { short_window: 50, long_window: 200, signal: 'golden_cross', status: 'calculated', reason: null },
+    technical_methods: [
+      {
+        method: 'sma_50', description: '50-day SMA', projected_price: '105', projection_days: 5,
+        projected_date: '2026-09-01',
+        status: 'calculated', reason: null, formatted_projected_price: '$105.00',
+      },
+    ],
+    technical_disclaimer: 'Technical indicators are heuristics, not predictions.',
+    technical_signal: { label: 'bullish', color: 'green', reason: 'Golden cross with price confirming.' },
+    current_price: '100',
+    formatted_current_price: '$100.00',
     ...overrides,
   }
 }

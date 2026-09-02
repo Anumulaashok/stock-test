@@ -236,8 +236,48 @@ class ReportValuationScenario(BaseModel):
 
 class ReportPriceTrendPoint(BaseModel):
     day_offset: int
+    date: str | None = None
     projected_price: Decimal | None
     formatted_projected_price: str | None = None
+
+
+class ReportMovingAverage(BaseModel):
+    window: int
+    value: Decimal | None
+    status: str
+    reason: str | None = None
+    formatted_value: str | None = None
+
+
+class ReportMovingAverageCrossover(BaseModel):
+    short_window: int
+    long_window: int
+    signal: str | None = None
+    status: str
+    reason: str | None = None
+
+
+class ReportTechnicalMethod(BaseModel):
+    method: str
+    description: str
+    projected_price: Decimal | None
+    projection_days: int
+    projected_date: str | None = None
+    status: str
+    reason: str | None = None
+    formatted_projected_price: str | None = None
+
+
+class ReportTechnicalSignal(BaseModel):
+    """A deterministic, color-coded technical-trend signal derived from
+    the already-computed moving-average crossover and price-vs-average
+    position (see `app/reporting/technical_signal.py`). This is
+    explicitly NOT a buy/sell/hold recommendation — it computes nothing
+    new; it only labels a combination of signals that already exist."""
+
+    label: str  # "bullish" | "bearish" | "neutral" | "mixed" | "unavailable"
+    color: str  # "green" | "yellow" | "red" | "gray"
+    reason: str
 
 
 class ReportForecastSection(BaseModel):
@@ -256,6 +296,13 @@ class ReportForecastSection(BaseModel):
     price_trend_status: str | None = None
     price_trend_reason: str | None = None
     price_trend_disclaimer: str | None = None
+    moving_averages: list[ReportMovingAverage] = Field(default_factory=list)
+    crossover: ReportMovingAverageCrossover | None = None
+    technical_methods: list[ReportTechnicalMethod] = Field(default_factory=list)
+    technical_disclaimer: str | None = None
+    technical_signal: ReportTechnicalSignal | None = None
+    current_price: Decimal | None = None
+    formatted_current_price: str | None = None
 
 
 # --- Evidence / top-level report -------------------------------------------------------

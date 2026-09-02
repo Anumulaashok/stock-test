@@ -103,7 +103,7 @@ class Settings(BaseSettings):
     market_data_connect_timeout_seconds: float = Field(default=5.0)
     market_data_timeout_seconds: float = Field(default=10.0)
     market_data_max_retries: int = Field(default=1)
-    market_data_recent_prices_limit: int = Field(default=30)
+    market_data_recent_prices_limit: int = Field(default=210)
 
     # Database — defaults to a local SQLite file so the app runs with zero
     # external setup; override with a Postgres URL in production
@@ -124,6 +124,19 @@ class Settings(BaseSettings):
     # answer, so it needs a substantially larger value or every response
     # gets truncated to empty.
     analyst_max_response_tokens: int = Field(default=700)
+
+    # Q&A assistant response budget. Answers are shorter than a full
+    # analyst report (one question, one grounded answer), so this
+    # defaults lower than `analyst_max_response_tokens`; a reasoning
+    # model still needs more room for the same reason noted above.
+    qa_max_response_tokens: int = Field(default=400)
+
+    # API response caching (see app/cache/). Backed by the app's own SQL
+    # database -- no separate cache infrastructure. Financial statements
+    # don't change intra-day, so a long default TTL is safe; a market
+    # quote is live data, so its default TTL is seconds, not days.
+    financial_data_cache_ttl_seconds: int = Field(default=7 * 24 * 60 * 60)  # 7 days
+    market_data_cache_ttl_seconds: int = Field(default=30)  # seconds
 
 
 @lru_cache

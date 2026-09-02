@@ -41,7 +41,7 @@ def _indianapi_raw_entry():
             ],
             "BAL": [
                 item("TotalDebt", "398000.00"),
-                item("Cash", "98592.00"),
+                item("CashEquivalents", "98592.00"),
                 item("TotalAssets", "2178140.00"),
                 item("TotalCurrentAssets", "594249.00"),
                 item("TotalCurrentLiabilities", "541254.00"),
@@ -137,4 +137,4 @@ async def test_indianapi_flows_through_the_full_pipeline_without_it_knowing():
     assert received.income_statements[0].net_income == d("80775.00")
     assert received.balance_sheets[0].total_debt == d("398000.00")
     assert received.cash_flow_statements[0].operating_cash_flow == d("192113.00")
-    assert received.currency is None  # never guessed
+    assert received.currency == "INR"  # IndianAPI is Indian-market-only

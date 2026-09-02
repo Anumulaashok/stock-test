@@ -110,13 +110,40 @@ def render_markdown(report: InvestmentResearchReport) -> str:
         if report.forecast.price_trend:
             lines.append("\n### Price Trend Extrapolation\n")
             lines.append(f"_{report.forecast.price_trend_disclaimer}_\n")
-            lines.append("| Day | Projected Price |")
-            lines.append("|---:|---:|")
+            lines.append("| Day | Date | Projected Price |")
+            lines.append("|---:|---|---:|")
             for point in report.forecast.price_trend:
                 value = point.formatted_projected_price or "unavailable"
-                lines.append(f"| +{point.day_offset} | {value} |")
+                lines.append(f"| +{point.day_offset} | {point.date or 'unknown'} | {value} |")
         elif report.forecast.price_trend_status:
             lines.append(f"\n### Price Trend Extrapolation\n\n_{report.forecast.price_trend_reason}_")
+        if report.forecast.moving_averages or report.forecast.technical_methods:
+            lines.append("\n### Technical Indicators\n")
+            if report.forecast.technical_signal:
+                sig = report.forecast.technical_signal
+                lines.append(f"Technical signal: **{sig.label}** — {sig.reason}\n")
+            if report.forecast.technical_disclaimer:
+                lines.append(f"_{report.forecast.technical_disclaimer}_\n")
+            if report.forecast.moving_averages:
+                lines.append("| Moving Average | Value | Status |")
+                lines.append("|---|---:|---|")
+                for ma in report.forecast.moving_averages:
+                    value = ma.formatted_value or "unavailable"
+                    lines.append(f"| {ma.window}-day SMA | {value} | {ma.status} |")
+            if report.forecast.crossover:
+                crossover = report.forecast.crossover
+                signal = crossover.signal or "unavailable"
+                lines.append(f"\nCrossover signal ({crossover.short_window}-day vs {crossover.long_window}-day): **{signal}**")
+                if crossover.reason:
+                    lines.append(f"_{crossover.reason}_")
+            if report.forecast.technical_methods:
+                lines.append("\n| Method | Projected Price (+{}d) | Status |".format(
+                    report.forecast.technical_methods[0].projection_days
+                ))
+                lines.append("|---|---:|---|")
+                for method in report.forecast.technical_methods:
+                    value = method.formatted_projected_price or "unavailable"
+                    lines.append(f"| {method.method} | {value} | {method.status} |")
 
     if report.research and report.research.available:
         lines.append("\n## Research Context\n")

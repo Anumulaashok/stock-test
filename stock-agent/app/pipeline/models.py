@@ -111,6 +111,7 @@ class PipelineStatus(StrEnum):
 class PipelineCompanyInfo(BaseModel):
     name: str
     ticker: str | None = None
+    currency: str | None = None
 
 
 class ExecutionMetadata(BaseModel):

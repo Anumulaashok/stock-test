@@ -195,6 +195,30 @@ def test_valuation_methods_preserved_independently_not_averaged():
     assert not hasattr(report.valuation, "average_value")
 
 
+def test_non_usd_currency_flows_from_company_into_formatted_values():
+    # A company reporting in INR (e.g. an IndianAPI-sourced company) must
+    # never have its monetary values silently rendered with a "$" prefix.
+    combined = _combined(company=PipelineCompanyInfo(name="Acme India", ticker="ACME", currency="INR"))
+    report = ReportService(clock=_clock).generate(combined)
+
+    assert report.company.currency == "INR"
+    fcf = next(m for m in report.financials.cash_flow if m.name == "free_cash_flow")
+    assert fcf.formatted_value is not None and fcf.formatted_value.startswith("INR ")
+    assert "$" not in fcf.formatted_value
+
+    dcf = next(m for m in report.valuation.methods if m.method == "dcf")
+    assert dcf.formatted_value_per_share.startswith("INR ")
+    assert report.valuation.formatted_current_share_price.startswith("INR ")
+
+
+def test_missing_currency_still_defaults_to_dollar_formatting():
+    # Unchanged existing behavior when currency truly isn't known.
+    report = ReportService(clock=_clock).generate(_combined())
+    assert report.company.currency is None
+    fcf = next(m for m in report.financials.cash_flow if m.name == "free_cash_flow")
+    assert fcf.formatted_value.startswith("$")
+
+
 def test_valuation_assumptions_exposed_not_invented():
     report = ReportService(clock=_clock).generate(_combined())
     dcf = next(m for m in report.valuation.methods if m.method == "dcf")

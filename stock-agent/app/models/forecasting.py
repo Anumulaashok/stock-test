@@ -85,6 +85,12 @@ class ValuationForecastRange(BaseModel):
 
 class PriceTrendPoint(BaseModel):
     day_offset: int = Field(description="Trading days ahead of the most recent observed price.")
+    date: str | None = Field(
+        default=None,
+        description="Calendar date (ISO, YYYY-MM-DD) for this offset -- a naive "
+        "calendar-day projection from the latest observed price date, not "
+        "trading-day-aware (weekends/holidays are not excluded).",
+    )
     projected_price: Decimal | None
 
 
@@ -111,6 +117,74 @@ class PriceTrendForecast(BaseModel):
     )
 
 
+# --- Technical indicator forecasting ------------------------------------------------------
+
+
+class MovingAverageResult(BaseModel):
+    """A single simple moving average (e.g. 50-day, 200-day) computed
+    over recent closing prices."""
+
+    window: int = Field(description="Number of trailing trading days averaged (e.g. 50, 200).")
+    value: Decimal | None
+    status: MetricStatus
+    reason: str | None = None
+
+
+class MovingAverageCrossover(BaseModel):
+    """Golden-cross / death-cross classification of the short vs. long
+    moving average -- a trend-direction signal, not a price forecast."""
+
+    short_window: int
+    long_window: int
+    signal: str | None = None  # "golden_cross" | "death_cross" | "neutral"
+    status: MetricStatus
+    reason: str | None = None
+
+
+class TechnicalForecastMethod(BaseModel):
+    """One named, independently-trackable price-projection technique.
+
+    `method` is a stable identifier (e.g. "linear_regression",
+    "sma_50", "sma_200", "sma_crossover_momentum", "rate_of_change") so
+    results can be logged and compared, day over day, against actual
+    outcomes -- each method is reported separately and never averaged
+    into a single number.
+    """
+
+    method: str
+    description: str
+    projected_price: Decimal | None
+    projection_days: int
+    projected_date: str | None = Field(
+        default=None, description="Calendar date (ISO, YYYY-MM-DD) this projection targets."
+    )
+    status: MetricStatus
+    reason: str | None = None
+
+
+class TechnicalForecast(BaseModel):
+    """A set of well-known technical-analysis techniques (moving
+    averages, crossover signal, momentum) applied to recent closing
+    prices. Each is a common market heuristic, not a prediction of
+    future performance -- the `disclaimer` is always attached."""
+
+    ticker: str
+    based_on_points: int = 0
+    current_price: Decimal | None = None
+    projection_days: int = 0
+    moving_averages: list[MovingAverageResult] = Field(default_factory=list)
+    crossover: MovingAverageCrossover | None = None
+    methods: list[TechnicalForecastMethod] = Field(default_factory=list)
+    warnings: list[str] = Field(default_factory=list)
+    disclaimer: str = (
+        "Technical indicators (moving averages, crossover signal, momentum) "
+        "computed from recent closing prices using well-known heuristic "
+        "formulas. These are not predictions of future performance, carry "
+        "no confidence guarantee, and should never be treated as a price "
+        "target or investment recommendation."
+    )
+
+
 # --- Combined forecast result --------------------------------------------------------------
 
 
@@ -123,4 +197,5 @@ class ForecastResult(BaseModel):
     financial_forecast: FinancialForecast | None = None
     valuation_forecast: ValuationForecastRange | None = None
     price_trend_forecast: PriceTrendForecast | None = None
+    technical_forecast: TechnicalForecast | None = None
     warnings: list[str] = Field(default_factory=list)

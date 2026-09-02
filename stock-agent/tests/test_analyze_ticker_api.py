@@ -2,6 +2,7 @@ import json
 import time
 
 import httpx
+import pytest
 import respx
 from fastapi.testclient import TestClient
 
@@ -9,6 +10,13 @@ from app.core.config import get_settings
 from app.main import app
 
 client = TestClient(app)
+
+
+@pytest.fixture(autouse=True)
+def _db_override(db_dependency_override):
+    """The endpoints under test now read/write a cache table via
+    `get_db` (see app/cache/) -- give every test an isolated in-memory
+    SQLite DB (tests/conftest.py's `db_dependency_override`)."""
 
 FMP_BASE = "http://test-fmp:9999/stable"
 
@@ -46,11 +54,14 @@ def _set_env(monkeypatch, fmp_key="fmp-secret-key", llm_configured=True):
     monkeypatch.setenv("FINANCIAL_DATA_PROVIDER", "fmp")
     monkeypatch.setenv("FMP_BASE_URL", FMP_BASE)
     monkeypatch.setenv("FMP_API_KEY", fmp_key)
-    # Step 4: MARKET_DATA_PROVIDER defaults to "fmp" and reuses FMP_API_KEY --
+    # Step 4: this test file exercises FMP market-data wiring specifically,
+    # so MARKET_DATA_PROVIDER is pinned to "fmp" (the app's own default can
+    # point elsewhere depending on deployment) and reuses FMP_API_KEY --
     # every test below that doesn't explicitly mock GET {FMP_BASE}/quote
     # relies on respx's "unmocked request" failure being caught by
     # AnalysisApplicationService's broad except (see test below verifying
     # that this degrades to a warning, not a crash).
+    monkeypatch.setenv("MARKET_DATA_PROVIDER", "fmp")
     if llm_configured:
         monkeypatch.setenv("LOCAL_LLM_BASE_URL", "http://test-llm:8080/v1")
         monkeypatch.setenv("LOCAL_LLM_MODEL", "qwen3-8b")

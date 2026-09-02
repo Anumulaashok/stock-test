@@ -8,18 +8,17 @@ only builds the (already-existing) services, hands the request to
 import logging
 
 from fastapi import APIRouter, Depends
+from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.analyst.service import AnalystService
+from app.api.dependencies import (
+    build_cached_financial_data_service,
+    build_cached_market_data_service,
+    build_pipeline,
+)
 from app.application.service import AnalysisApplicationService
 from app.core.config import Settings, get_settings
 from app.data.factory import get_financial_data_provider
-from app.data.service import FinancialDataService
-from app.financial.service import FinancialAnalysisService
-from app.forecasting.service import ForecastingService
-from app.llm.factory import get_llm_provider
-from app.market.factory import get_market_data_provider
-from app.market.service import MarketDataService
-from app.models.analyst import AnalystError, AnalystErrorCode, AnalystResult
+from app.db.base import get_db
 from app.pipeline.models import (
     AnalysisRequest,
     CombinedAnalysisResult,
@@ -27,83 +26,11 @@ from app.pipeline.models import (
     PipelineStatus,
     TickerAnalysisRequest,
 )
-from app.pipeline.service import AnalysisPipelineService
 from app.reporting.service import ReportService
-from app.research.factory import get_research_provider
-from app.research.service import ResearchService
-from app.scoring.service import ScoringService
-from app.valuation.service import ValuationService
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/v1", tags=["analyze"])
-
-
-class _MisconfiguredAnalystService:
-    """Stand-in for `AnalystService` when no LLM provider can be built.
-
-    Lets the deterministic stages complete normally (`status="partial"`)
-    instead of failing the whole request over an LLM configuration issue.
-    """
-
-    def __init__(self, message: str) -> None:
-        self._message = message
-
-    async def analyze(self, *_args, **_kwargs) -> AnalystResult:
-        return AnalystResult(
-            status="error",
-            error=AnalystError(code=AnalystErrorCode.LLM_UNAVAILABLE, message=self._message),
-        )
-
-
-def _build_research_service(settings: Settings) -> ResearchService | None:
-    """Returns `None` (not an error) when unconfigured — research is
-    always optional; a caller who didn't opt in never even calls this."""
-    try:
-        provider = get_research_provider(settings)
-    except ValueError as exc:
-        logger.info("Research provider not configured: %s", exc)
-        return None
-    return ResearchService(
-        provider,
-        default_date_range_days=settings.research_default_days,
-        default_max_results=settings.research_default_max_results,
-        stale_after_days=settings.research_stale_after_days,
-    )
-
-
-def _build_market_data_service(settings: Settings) -> MarketDataService | None:
-    """Returns `None` (not an error) when unconfigured -- Step 4: a live
-    price is a nice-to-have for ticker analysis, not a requirement.
-    Mirrors `_build_research_service`'s policy exactly."""
-    try:
-        provider = get_market_data_provider(settings)
-    except ValueError as exc:
-        logger.info("Market data provider not configured: %s", exc)
-        return None
-    return MarketDataService(
-        provider, default_recent_prices_limit=settings.market_data_recent_prices_limit
-    )
-
-
-def _build_pipeline(settings: Settings) -> AnalysisPipelineService:
-    try:
-        provider = get_llm_provider(settings)
-        analyst_service = AnalystService(
-            provider, max_response_tokens=settings.analyst_max_response_tokens
-        )
-    except ValueError as exc:
-        logger.warning("Analyst LLM provider misconfigured: %s", exc)
-        analyst_service = _MisconfiguredAnalystService(str(exc))
-
-    return AnalysisPipelineService(
-        financial_service=FinancialAnalysisService(),
-        valuation_service=ValuationService(),
-        scoring_service=ScoringService(),
-        analyst_service=analyst_service,
-        research_service=_build_research_service(settings),
-        forecasting_service=ForecastingService(),
-    )
 
 
 def _with_report_if_requested(
@@ -122,14 +49,16 @@ def _with_report_if_requested(
 async def analyze(
     request: AnalysisRequest, settings: Settings = Depends(get_settings)
 ) -> CombinedAnalysisResult:
-    pipeline = _build_pipeline(settings)
+    pipeline = build_pipeline(settings)
     result = await pipeline.analyze(request)
     return _with_report_if_requested(result, request.include_report)
 
 
 @router.post("/analyze/ticker")
 async def analyze_ticker(
-    request: TickerAnalysisRequest, settings: Settings = Depends(get_settings)
+    request: TickerAnalysisRequest,
+    settings: Settings = Depends(get_settings),
+    db: AsyncSession = Depends(get_db),
 ) -> CombinedAnalysisResult:
     try:
         provider = get_financial_data_provider(settings)
@@ -141,10 +70,10 @@ async def analyze_ticker(
             warnings=[f"Financial data provider is not configured: {exc}"],
         )
 
-    pipeline = _build_pipeline(settings)
-    market_data_service = _build_market_data_service(settings)
+    pipeline = build_pipeline(settings)
+    market_data_service = build_cached_market_data_service(settings, db)
     application_service = AnalysisApplicationService(
-        FinancialDataService(provider), pipeline, market_data_service
+        build_cached_financial_data_service(settings, provider, db), pipeline, market_data_service
     )
     result = await application_service.analyze_by_ticker(request)
     return _with_report_if_requested(result, request.include_report)

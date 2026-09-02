@@ -53,6 +53,7 @@ export interface ReportWarning {
 
 export type SignalLabel = 'strong' | 'moderate' | 'weak' | 'unavailable'
 export type SignalColor = 'green' | 'yellow' | 'red' | 'gray'
+export type TechnicalSignalLabel = 'bullish' | 'bearish' | 'neutral' | 'mixed' | 'unavailable'
 
 /** A deterministic strength/risk indicator derived from the score band
  * and risk indicators -- not investment advice, never a buy/sell/hold
@@ -230,8 +231,42 @@ export interface ReportValuationScenario {
 
 export interface ReportPriceTrendPoint {
   day_offset: number
+  date: string | null
   projected_price: string | null
   formatted_projected_price: string | null
+}
+
+export interface ReportMovingAverage {
+  window: number
+  value: string | null
+  status: MetricStatus
+  reason: string | null
+  formatted_value: string | null
+}
+
+export interface ReportMovingAverageCrossover {
+  short_window: number
+  long_window: number
+  signal: string | null
+  status: MetricStatus
+  reason: string | null
+}
+
+export interface ReportTechnicalMethod {
+  method: string
+  description: string
+  projected_price: string | null
+  projection_days: number
+  projected_date: string | null
+  status: MetricStatus
+  reason: string | null
+  formatted_projected_price: string | null
+}
+
+export interface ReportTechnicalSignal {
+  label: TechnicalSignalLabel
+  color: SignalColor
+  reason: string
 }
 
 export interface ReportForecastSection {
@@ -244,6 +279,13 @@ export interface ReportForecastSection {
   price_trend_status: MetricStatus | null
   price_trend_reason: string | null
   price_trend_disclaimer: string | null
+  moving_averages: ReportMovingAverage[]
+  crossover: ReportMovingAverageCrossover | null
+  technical_methods: ReportTechnicalMethod[]
+  technical_disclaimer: string | null
+  technical_signal: ReportTechnicalSignal | null
+  current_price: string | null
+  formatted_current_price: string | null
 }
 
 export interface InvestmentResearchReport {
@@ -323,6 +365,32 @@ export interface TickerAnalysisRequest {
   ticker: string
   include_report: true
   include_price_trend_forecast?: boolean
+}
+
+// --- AI Q&A assistant -----------------------------------------------------------------
+// Mirrors app/models/qa.py. Deliberately has no buy/sell/hold or probability
+// field -- see app/qa/prompts.py for why the assistant never produces one.
+
+export interface QAResponse {
+  answer: string
+  evidence: AnalystEvidence
+  recommendation_declined: boolean
+}
+
+export interface QAError {
+  code: string
+  message: string
+}
+
+export interface QAResult {
+  status: ResultStatus
+  response: QAResponse | null
+  error: QAError | null
+}
+
+export interface QATickerRequest {
+  ticker: string
+  question: string
 }
 
 // --- Auth / portfolio (Step 11) -----------------------------------------------------

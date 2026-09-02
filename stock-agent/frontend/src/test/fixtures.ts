@@ -73,6 +73,13 @@ export function buildReport(overrides: Partial<InvestmentResearchReport> = {}): 
       price_trend_status: null,
       price_trend_reason: null,
       price_trend_disclaimer: null,
+      moving_averages: [],
+      crossover: null,
+      technical_methods: [],
+      technical_disclaimer: null,
+      technical_signal: null,
+      current_price: null,
+      formatted_current_price: null,
     },
     research: {
       source: 'research',

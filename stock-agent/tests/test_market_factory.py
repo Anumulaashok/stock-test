@@ -3,6 +3,7 @@ import pytest
 from app.core.config import Settings
 from app.market.factory import get_market_data_provider
 from app.market.providers.fmp import FMPMarketProvider
+from app.market.providers.indianapi import IndianAPIMarketProvider
 
 
 def _settings(**overrides) -> Settings:
@@ -27,3 +28,13 @@ def test_unknown_provider_raises_clear_configuration_error():
 def test_missing_fmp_api_key_raises_when_fmp_selected():
     with pytest.raises(ValueError, match="FMP_API_KEY"):
         get_market_data_provider(_settings(market_data_provider="fmp", fmp_api_key=None))
+
+
+def test_indianapi_provider_selected_by_identifier():
+    provider = get_market_data_provider(_settings(market_data_provider="indianapi", indian_api_key="key"))
+    assert isinstance(provider, IndianAPIMarketProvider)
+
+
+def test_missing_indian_api_key_raises_when_indianapi_selected():
+    with pytest.raises(ValueError, match="INDIAN_API_KEY"):
+        get_market_data_provider(_settings(market_data_provider="indianapi", indian_api_key=None))

@@ -11,7 +11,7 @@ import uuid
 from datetime import datetime, timezone
 from decimal import Decimal
 
-from sqlalchemy import DateTime, ForeignKey, Numeric, String, UniqueConstraint
+from sqlalchemy import DateTime, ForeignKey, Numeric, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
@@ -94,6 +94,19 @@ class WatchlistItemRow(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow, nullable=False)
 
     user: Mapped["UserRow"] = relationship(back_populates="watchlist_items")
+
+
+class CacheEntryRow(Base):
+    """Generic TTL cache store -- see `app/cache/`. Value is an opaque
+    JSON blob (a serialized Pydantic model); this table has no
+    knowledge of what it's caching, only when it expires."""
+
+    __tablename__ = "cache_entries"
+
+    key: Mapped[str] = mapped_column(String(512), primary_key=True)
+    value: Mapped[str] = mapped_column(Text, nullable=False)
+    cached_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow, nullable=False)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, index=True)
 
 
 class RevokedTokenRow(Base):

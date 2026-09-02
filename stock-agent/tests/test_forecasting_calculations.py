@@ -1,6 +1,14 @@
 from decimal import Decimal
 
-from app.forecasting.calculations import calculate_cagr, fit_linear_trend, project_metric
+from app.forecasting.calculations import (
+    calculate_cagr,
+    calculate_rate_of_change,
+    calculate_sma,
+    classify_moving_average_crossover,
+    fit_linear_trend,
+    project_calendar_date,
+    project_metric,
+)
 from app.models.financial_results import MetricStatus
 
 
@@ -121,3 +129,102 @@ def test_fit_linear_trend_flat_series_has_zero_slope():
     assert status is MetricStatus.CALCULATED
     assert slope == d(0)
     assert r_squared == d(1)
+
+
+# --- calculate_sma ------------------------------------------------------------------------
+
+
+def test_calculate_sma_averages_the_trailing_window():
+    values = [d(v) for v in [10, 20, 30, 40, 50]]
+    value, status, reason = calculate_sma(values, 3)
+    assert status is MetricStatus.CALCULATED
+    assert reason is None
+    assert value == d(40)  # mean of 30, 40, 50
+
+
+def test_calculate_sma_insufficient_points_is_unavailable():
+    value, status, reason = calculate_sma([d(1), d(2)], 5)
+    assert value is None
+    assert status is MetricStatus.UNAVAILABLE
+    assert "5" in reason
+
+
+def test_calculate_sma_ignores_points_outside_the_window():
+    values = [d(1000)] + [d(v) for v in [10, 20, 30]]
+    value, status, _ = calculate_sma(values, 3)
+    assert status is MetricStatus.CALCULATED
+    assert value == d(20)
+
+
+# --- classify_moving_average_crossover -----------------------------------------------------
+
+
+def test_classify_moving_average_crossover_golden_cross():
+    signal, status, reason = classify_moving_average_crossover(d(110), d(100))
+    assert signal == "golden_cross"
+    assert status is MetricStatus.CALCULATED
+    assert reason is None
+
+
+def test_classify_moving_average_crossover_death_cross():
+    signal, status, _ = classify_moving_average_crossover(d(90), d(100))
+    assert signal == "death_cross"
+    assert status is MetricStatus.CALCULATED
+
+
+def test_classify_moving_average_crossover_neutral_when_equal():
+    signal, status, _ = classify_moving_average_crossover(d(100), d(100))
+    assert signal == "neutral"
+    assert status is MetricStatus.CALCULATED
+
+
+def test_classify_moving_average_crossover_missing_input_is_unavailable():
+    signal, status, reason = classify_moving_average_crossover(None, d(100))
+    assert signal is None
+    assert status is MetricStatus.UNAVAILABLE
+    assert reason is not None
+
+
+# --- calculate_rate_of_change ---------------------------------------------------------------
+
+
+def test_calculate_rate_of_change_hand_calculated():
+    values = [d(v) for v in [100, 101, 102, 103, 104, 105, 110]]
+    roc, status, reason = calculate_rate_of_change(values, 6)
+    assert status is MetricStatus.CALCULATED
+    assert reason is None
+    assert roc == d(10)  # (110 - 100) / 100 * 100
+
+
+def test_calculate_rate_of_change_insufficient_points_is_unavailable():
+    roc, status, reason = calculate_rate_of_change([d(100), d(101)], 5)
+    assert roc is None
+    assert status is MetricStatus.UNAVAILABLE
+    assert "6" in reason
+
+
+def test_calculate_rate_of_change_zero_begin_is_unavailable():
+    values = [d(0)] + [d(v) for v in range(1, 15)]
+    roc, status, _ = calculate_rate_of_change(values, 14)
+    assert roc is None
+    assert status is MetricStatus.UNAVAILABLE
+
+
+# --- project_calendar_date -----------------------------------------------------------------
+
+
+def test_project_calendar_date_adds_days_to_the_anchor():
+    assert project_calendar_date("2026-08-20", 5) == "2026-08-25"
+
+
+def test_project_calendar_date_crosses_month_boundary():
+    assert project_calendar_date("2026-08-30", 3) == "2026-09-02"
+
+
+def test_project_calendar_date_missing_anchor_is_none():
+    assert project_calendar_date(None, 5) is None
+    assert project_calendar_date("", 5) is None
+
+
+def test_project_calendar_date_unparseable_anchor_is_none():
+    assert project_calendar_date("not-a-date", 5) is None

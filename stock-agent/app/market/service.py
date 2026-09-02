@@ -9,6 +9,7 @@ financial metric, never touches valuation/scoring, never calls the LLM.
 
 import logging
 from datetime import datetime, timezone
+from typing import Protocol
 
 from app.market.base import MarketDataProvider
 from app.market.exceptions import MarketProviderError
@@ -16,7 +17,18 @@ from app.models.market import MarketDataError, MarketSnapshot, MarketSnapshotRes
 
 logger = logging.getLogger(__name__)
 
-DEFAULT_RECENT_PRICES_LIMIT = 30
+
+class MarketDataFetcher(Protocol):
+    """Structural interface shared by `MarketDataService` and
+    `app.cache.market_data.CachedMarketDataService` -- callers (e.g.
+    `AnalysisApplicationService`) depend on this, not a concrete class,
+    so caching can be layered in without touching them."""
+
+    async def get_snapshot(self, ticker: str, include_recent_prices: bool = True) -> MarketSnapshotResult: ...
+
+# 200+ trading days needed for a 200-day moving average forecast; this
+# fetch only happens when a caller opts into `include_recent_prices`.
+DEFAULT_RECENT_PRICES_LIMIT = 210
 
 
 class MarketDataService:

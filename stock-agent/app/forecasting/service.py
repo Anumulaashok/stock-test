@@ -21,14 +21,26 @@ can be partial" policy.
 
 from decimal import Decimal
 
-from app.forecasting.calculations import calculate_cagr, fit_linear_trend, project_metric
+from app.forecasting.calculations import (
+    calculate_cagr,
+    calculate_rate_of_change,
+    calculate_sma,
+    classify_moving_average_crossover,
+    fit_linear_trend,
+    project_calendar_date,
+    project_metric,
+)
 from app.models.financial_results import FinancialAnalysisResult, MetricStatus
 from app.models.financial_statements import CompanyFinancials
 from app.models.forecasting import (
     FinancialForecast,
     ForecastResult,
+    MovingAverageCrossover,
+    MovingAverageResult,
     PriceTrendForecast,
     PriceTrendPoint,
+    TechnicalForecast,
+    TechnicalForecastMethod,
     ValuationForecastRange,
     ValuationScenario,
 )
@@ -39,6 +51,9 @@ from app.valuation.dcf import calculate_dcf
 _SCENARIO_SPREAD = Decimal("0.02")  # +/- 200 bps around the base FCF growth assumption
 DEFAULT_PROJECTION_YEARS = 5
 DEFAULT_PROJECTION_DAYS = 30
+SMA_SHORT_WINDOW = 50
+SMA_LONG_WINDOW = 200
+ROC_WINDOW = 14
 
 _INCOME_STATEMENT_METRICS = [
     ("revenue", "USD"),
@@ -67,22 +82,31 @@ class ForecastingService:
             if valuation_input is not None
             else None
         )
+        resolved_ticker = ticker or company_financials.ticker or company_financials.company_name
         price_trend_forecast = self.forecast_price_trend(
-            ticker or company_financials.ticker or company_financials.company_name,
+            resolved_ticker,
             recent_prices or [],
             projection_days,
+        )
+        technical_forecast = self.forecast_technical(
+            resolved_ticker,
+            recent_prices or [],
+            current_price=valuation_input.current_share_price if valuation_input else None,
+            projection_days=projection_days,
         )
 
         warnings: list[str] = []
         warnings.extend(financial_forecast.warnings)
         if valuation_forecast:
             warnings.extend(valuation_forecast.warnings)
+        warnings.extend(technical_forecast.warnings)
 
         return ForecastResult(
             company=company_financials.company_name,
             financial_forecast=financial_forecast,
             valuation_forecast=valuation_forecast,
             price_trend_forecast=price_trend_forecast,
+            technical_forecast=technical_forecast,
             warnings=warnings,
         )
 
@@ -154,16 +178,22 @@ class ForecastingService:
 
         end_value = latest_fcf.value if latest_fcf and latest_fcf.status is MetricStatus.CALCULATED else None
 
+        # Step 2 only exposes the latest-vs-previous-period YoY growth, never
+        # a full multi-period CAGR (that would need the earliest period's
+        # derived FCF, not recomputed here) -- so this is the growth
+        # assumption used, whatever the total period count. Its status and
+        # reason are propagated verbatim rather than collapsed to a generic
+        # "insufficient historical periods" message, so e.g. a FY-over-FY
+        # sign flip (FCF turning positive/negative) is reported as INVALID
+        # with its real reason, not misreported as missing history.
         if end_value is None:
             cagr, status, reason = None, MetricStatus.UNAVAILABLE, "free cash flow is unavailable for the latest period"
-        elif fcf_growth is None or fcf_growth.status is not MetricStatus.CALCULATED:
-            # Step 2 only exposes the latest-vs-previous-period YoY growth,
-            # never a full multi-period CAGR (that would need the earliest
-            # period's derived FCF, not recomputed here) -- so this is the
-            # growth assumption used, whatever the total period count.
+        elif fcf_growth is None:
             cagr, status, reason = None, MetricStatus.UNAVAILABLE, "insufficient historical periods to calculate an FCF growth trend"
-        else:
+        elif fcf_growth.status is MetricStatus.CALCULATED:
             cagr, status, reason = fcf_growth.value, MetricStatus.CALCULATED, None
+        else:
+            cagr, status, reason = None, fcf_growth.status, fcf_growth.reason
 
         return project_metric(
             name="free_cash_flow",
@@ -249,9 +279,11 @@ class ForecastingService:
             )
 
         last_index = Decimal(len(closes) - 1)
+        anchor_date = usable[-1].timestamp if usable else None
         points = [
             PriceTrendPoint(
                 day_offset=day,
+                date=project_calendar_date(anchor_date, day),
                 # A share price cannot go negative; a steep downtrend
                 # extrapolated far enough is floored at zero rather than
                 # emitting an economically meaningless negative value.
@@ -268,4 +300,193 @@ class ForecastingService:
             projection_days=projection_days,
             points=points,
             status=MetricStatus.CALCULATED,
+        )
+
+    # --- Technical indicator forecasting ------------------------------------------------
+
+    def forecast_technical(
+        self,
+        ticker: str,
+        recent_prices: list[HistoricalPricePoint],
+        current_price: Decimal | None,
+        projection_days: int,
+    ) -> TechnicalForecast:
+        """Moving averages, crossover signal, and momentum-based
+        projections -- each an independently-labeled technique so
+        results can be tracked and compared against actual outcomes
+        over time, exactly like `forecast_valuation`'s bear/base/bull
+        scenarios are never blended into one number."""
+        usable = sorted(
+            (p for p in recent_prices if p.close is not None),
+            key=lambda p: p.timestamp,
+        )
+        closes = [p.close for p in usable]
+        # Fall back to the latest known close when no explicit current
+        # price was supplied (e.g. called outside the pipeline's
+        # market-data resolution step).
+        resolved_current_price = current_price if current_price is not None else (closes[-1] if closes else None)
+        anchor_date = usable[-1].timestamp if usable else None
+        target_date = project_calendar_date(anchor_date, projection_days)
+
+        warnings: list[str] = []
+
+        sma_50_value, sma_50_status, sma_50_reason = calculate_sma(closes, SMA_SHORT_WINDOW)
+        sma_200_value, sma_200_status, sma_200_reason = calculate_sma(closes, SMA_LONG_WINDOW)
+        moving_averages = [
+            MovingAverageResult(window=SMA_SHORT_WINDOW, value=sma_50_value, status=sma_50_status, reason=sma_50_reason),
+            MovingAverageResult(window=SMA_LONG_WINDOW, value=sma_200_value, status=sma_200_status, reason=sma_200_reason),
+        ]
+        if sma_50_status is not MetricStatus.CALCULATED:
+            warnings.append(f"{SMA_SHORT_WINDOW}-day moving average unavailable: {sma_50_reason}")
+        if sma_200_status is not MetricStatus.CALCULATED:
+            warnings.append(f"{SMA_LONG_WINDOW}-day moving average unavailable: {sma_200_reason}")
+
+        crossover_signal, crossover_status, crossover_reason = classify_moving_average_crossover(
+            sma_50_value, sma_200_value
+        )
+        crossover = MovingAverageCrossover(
+            short_window=SMA_SHORT_WINDOW,
+            long_window=SMA_LONG_WINDOW,
+            signal=crossover_signal,
+            status=crossover_status,
+            reason=crossover_reason,
+        )
+
+        methods: list[TechnicalForecastMethod] = []
+
+        methods.append(
+            self._sma_level_method(
+                "sma_50",
+                "50-day simple moving average, reported as the level recent price action is "
+                "clustered around (a mean-reversion reference, not a directional forecast).",
+                sma_50_value,
+                sma_50_status,
+                sma_50_reason,
+                projection_days,
+                target_date,
+            )
+        )
+        methods.append(
+            self._sma_level_method(
+                "sma_200",
+                "200-day simple moving average, reported as the level recent price action is "
+                "clustered around (a mean-reversion reference, not a directional forecast).",
+                sma_200_value,
+                sma_200_status,
+                sma_200_reason,
+                projection_days,
+                target_date,
+            )
+        )
+
+        slope, intercept, _r_squared, trend_status, trend_reason = fit_linear_trend(closes)
+        if trend_status is MetricStatus.CALCULATED:
+            projected = intercept + slope * Decimal(len(closes) - 1 + projection_days)
+            linear_value, linear_status, linear_reason = max(Decimal(0), projected), MetricStatus.CALCULATED, None
+        else:
+            linear_value, linear_status, linear_reason = None, trend_status, trend_reason
+        methods.append(
+            TechnicalForecastMethod(
+                method="linear_regression",
+                description="Ordinary least squares regression over recent closing prices, "
+                "extrapolated forward by the projection horizon.",
+                projected_price=linear_value,
+                projection_days=projection_days,
+                projected_date=target_date,
+                status=linear_status,
+                reason=linear_reason,
+            )
+        )
+
+        if (
+            sma_50_status is MetricStatus.CALCULATED
+            and sma_200_status is MetricStatus.CALCULATED
+            and resolved_current_price is not None
+            and sma_200_value != 0
+        ):
+            spread = (sma_50_value - sma_200_value) / sma_200_value
+            crossover_projected = resolved_current_price * (1 + spread)
+            methods.append(
+                TechnicalForecastMethod(
+                    method="sma_crossover_momentum",
+                    description="Applies the percentage spread between the 50-day and 200-day moving "
+                    "averages to the current price as a momentum drift (golden cross -> upward "
+                    "drift, death cross -> downward drift).",
+                    projected_price=max(Decimal(0), crossover_projected),
+                    projection_days=projection_days,
+                    projected_date=target_date,
+                    status=MetricStatus.CALCULATED,
+                )
+            )
+        else:
+            reason = (
+                "both 50-day and 200-day moving averages and a current price are required"
+                if resolved_current_price is not None
+                else "current price is unavailable"
+            )
+            methods.append(
+                TechnicalForecastMethod(
+                    method="sma_crossover_momentum",
+                    description="Applies the percentage spread between the 50-day and 200-day moving "
+                    "averages to the current price as a momentum drift (golden cross -> upward "
+                    "drift, death cross -> downward drift).",
+                    projected_price=None,
+                    projection_days=projection_days,
+                    projected_date=target_date,
+                    status=MetricStatus.UNAVAILABLE,
+                    reason=reason,
+                )
+            )
+
+        roc_value, roc_status, roc_reason = calculate_rate_of_change(closes, ROC_WINDOW)
+        if roc_status is MetricStatus.CALCULATED and resolved_current_price is not None:
+            roc_projected = resolved_current_price * (1 + roc_value / 100)
+            methods.append(
+                TechnicalForecastMethod(
+                    method="rate_of_change_momentum",
+                    description=f"Applies the {ROC_WINDOW}-day rate-of-change (momentum) to the "
+                    "current price, assuming the recent trend continues at the same pace.",
+                    projected_price=max(Decimal(0), roc_projected),
+                    projection_days=projection_days,
+                    projected_date=target_date,
+                    status=MetricStatus.CALCULATED,
+                )
+            )
+        else:
+            methods.append(
+                TechnicalForecastMethod(
+                    method="rate_of_change_momentum",
+                    description=f"Applies the {ROC_WINDOW}-day rate-of-change (momentum) to the "
+                    "current price, assuming the recent trend continues at the same pace.",
+                    projected_price=None,
+                    projection_days=projection_days,
+                    projected_date=target_date,
+                    status=roc_status if roc_status is not MetricStatus.CALCULATED else MetricStatus.UNAVAILABLE,
+                    reason=roc_reason or "current price is unavailable",
+                )
+            )
+
+        return TechnicalForecast(
+            ticker=ticker,
+            based_on_points=len(closes),
+            current_price=resolved_current_price,
+            projection_days=projection_days,
+            moving_averages=moving_averages,
+            crossover=crossover,
+            methods=methods,
+            warnings=warnings,
+        )
+
+    @staticmethod
+    def _sma_level_method(
+        method, description, value, status, reason, projection_days, projected_date
+    ) -> TechnicalForecastMethod:
+        return TechnicalForecastMethod(
+            method=method,
+            description=description,
+            projected_price=value if status is MetricStatus.CALCULATED else None,
+            projection_days=projection_days,
+            projected_date=projected_date,
+            status=status,
+            reason=None if status is MetricStatus.CALCULATED else reason,
         )

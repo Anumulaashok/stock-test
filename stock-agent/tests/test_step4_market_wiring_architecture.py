@@ -58,11 +58,17 @@ def test_pipeline_package_never_imports_httpx_directly():
 
 
 def test_analyze_api_reaches_fmp_only_through_market_data_service():
-    """`app/api/analyze.py` may reference the market-data factory/service
-    (the intended entry point), but must never import an FMP provider or
-    client class directly -- that would be a second, ad-hoc integration
+    """`app/api/analyze.py` builds its `MarketDataService` via the shared
+    `app.api.dependencies` builder (the intended entry point, also reused
+    by `app/api/qa.py`), which itself references the market-data
+    factory/service. Neither module may import an FMP provider or client
+    class directly -- that would be a second, ad-hoc integration
     bypassing MarketDataService."""
-    imports = _imported_module_names(_REPO_ROOT / "app" / "api" / "analyze.py")
-    assert "app.market.factory" in imports
-    assert "app.market.service" in imports
-    assert not any("providers.fmp" in name for name in imports)
+    analyze_imports = _imported_module_names(_REPO_ROOT / "app" / "api" / "analyze.py")
+    dependencies_imports = _imported_module_names(_REPO_ROOT / "app" / "api" / "dependencies.py")
+
+    assert "app.api.dependencies" in analyze_imports
+    assert "app.market.factory" in dependencies_imports
+    assert "app.market.service" in dependencies_imports
+    assert not any("providers.fmp" in name for name in analyze_imports)
+    assert not any("providers.fmp" in name for name in dependencies_imports)

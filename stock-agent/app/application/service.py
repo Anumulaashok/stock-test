@@ -26,8 +26,8 @@ import logging
 from decimal import Decimal
 
 from app.data.models import CompanyIdentifier
-from app.data.service import FinancialDataService
-from app.market.service import MarketDataService
+from app.data.service import FinancialDataFetcher
+from app.market.service import MarketDataFetcher
 from app.models.market import HistoricalPricePoint, MarketSnapshot, PriceFreshness
 from app.pipeline.models import (
     AnalysisRequest,
@@ -53,15 +53,17 @@ _USABLE_FRESHNESS = {PriceFreshness.LIVE, PriceFreshness.DELAYED}
 class AnalysisApplicationService:
     def __init__(
         self,
-        financial_data_service: FinancialDataService,
+        financial_data_service: FinancialDataFetcher,
         analysis_pipeline_service: AnalysisPipelineService,
-        market_data_service: MarketDataService | None = None,
+        market_data_service: MarketDataFetcher | None = None,
     ) -> None:
         self._financial_data_service = financial_data_service
         self._pipeline = analysis_pipeline_service
         self._market_data_service = market_data_service
 
-    async def analyze_by_ticker(self, request: TickerAnalysisRequest) -> CombinedAnalysisResult:
+    async def analyze_by_ticker(
+        self, request: TickerAnalysisRequest, run_analyst: bool = True
+    ) -> CombinedAnalysisResult:
         company = PipelineCompanyInfo(name=request.ticker, ticker=request.ticker)
 
         fetch_result = await self._financial_data_service.get_company_financials(
@@ -92,7 +94,7 @@ class AnalysisApplicationService:
             },
         )
 
-        result = await self._pipeline.analyze(analysis_request)
+        result = await self._pipeline.analyze(analysis_request, run_analyst=run_analyst)
         warnings = data.warnings + result.warnings
         if market_warning:
             warnings = warnings + [market_warning]

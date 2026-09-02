@@ -28,6 +28,7 @@ from app.models.valuation import ValuationRange
 class AnalystCompanyContext(BaseModel):
     name: str
     ticker: str | None = None
+    currency: str | None = None
 
 
 class AnalystMetricContext(BaseModel):

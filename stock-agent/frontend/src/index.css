@@ -5,15 +5,17 @@
    numeric data (tabular alignment, "terminal" feel), status colors used
    sparingly and never as the sole signal (always paired with text/icon). */
 :root {
-  --color-bg: #f7f7f8;
+  --color-bg: #f5f6f8;
+  --color-bg-subtle: #eef0f3;
   --color-surface: #ffffff;
   --color-surface-raised: #ffffff;
-  --color-border: #e2e2e6;
-  --color-border-strong: #c9c9d1;
-  --color-text: #1a1b23;
-  --color-text-muted: #5b5d6b;
-  --color-text-faint: #8b8d99;
+  --color-border: #e5e6ea;
+  --color-border-strong: #cfd1d8;
+  --color-text: #14151b;
+  --color-text-muted: #565968;
+  --color-text-faint: #8c8fa0;
   --color-accent: #2952a3;
+  --color-accent-strong: #1f3f80;
   --color-accent-soft: #eaf0fb;
 
   --color-status-critical: #b3261e;
@@ -24,22 +26,52 @@
   --color-status-positive: #1e7a4c;
   --color-status-negative: #b3261e;
 
-  --font-sans: -apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, Roboto, sans-serif;
-  --font-mono: ui-monospace, 'SF Mono', 'Roboto Mono', Consolas, monospace;
+  --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, 'SF Mono', 'Roboto Mono', Consolas, monospace;
+
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 18px;
+
+  /* Spacing scale -- section/card layout should draw from these rather
+     than arbitrary values, so vertical rhythm stays consistent. */
+  --space-1: 8px;
+  --space-2: 16px;
+  --space-3: 24px;
+  --space-4: 32px;
+  --space-6: 48px;
+
+  /* Type scale -- page title > section heading > card heading > metric
+     label > metric value > supporting text. `.section-heading` and
+     `.font-mono-nums` already exist; these fill in the rest. */
+  --text-page-title: 1.75rem;
+  --text-card-heading: 0.9375rem;
+  --text-metric-value: 1.5rem;
+  --text-metric-label: 0.6875rem;
+  --text-support: 0.8125rem;
+
+  --shadow-xs: 0 1px 2px rgba(20, 21, 27, 0.04);
+  --shadow-sm: 0 1px 3px rgba(20, 21, 27, 0.06), 0 1px 2px rgba(20, 21, 27, 0.04);
+  --shadow-md: 0 8px 24px -8px rgba(20, 21, 27, 0.14), 0 2px 8px -2px rgba(20, 21, 27, 0.06);
+  --shadow-lg: 0 24px 48px -12px rgba(20, 21, 27, 0.22), 0 8px 16px -4px rgba(20, 21, 27, 0.08);
+
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --color-bg: #0e0f13;
-    --color-surface: #16171d;
-    --color-surface-raised: #1c1d25;
-    --color-border: #2a2b34;
-    --color-border-strong: #3b3c47;
-    --color-text: #e7e7ea;
-    --color-text-muted: #a3a5b3;
-    --color-text-faint: #6f7180;
-    --color-accent: #7fa6e8;
-    --color-accent-soft: #1b2740;
+    --color-bg: #0b0c10;
+    --color-bg-subtle: #101116;
+    --color-surface: #15161c;
+    --color-surface-raised: #1b1c24;
+    --color-border: #262731;
+    --color-border-strong: #383a47;
+    --color-text: #eeeef2;
+    --color-text-muted: #a6a8b6;
+    --color-text-faint: #71738a;
+    --color-accent: #8caeeb;
+    --color-accent-strong: #aec4f0;
+    --color-accent-soft: #1a2740;
 
     --color-status-critical: #f2857c;
     --color-status-high: #f0a35c;
@@ -48,6 +80,11 @@
     --color-status-info: #a3a5b3;
     --color-status-positive: #7fc27a;
     --color-status-negative: #f2857c;
+
+    --shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.3);
+    --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.4), 0 1px 2px rgba(0, 0, 0, 0.3);
+    --shadow-md: 0 8px 24px -8px rgba(0, 0, 0, 0.55), 0 2px 8px -2px rgba(0, 0, 0, 0.35);
+    --shadow-lg: 0 24px 48px -12px rgba(0, 0, 0, 0.65), 0 8px 16px -4px rgba(0, 0, 0, 0.4);
   }
 }
 
@@ -57,10 +94,16 @@ html {
 
 body {
   margin: 0;
-  background: var(--color-bg);
+  min-height: 100vh;
+  background:
+    radial-gradient(1200px 600px at 12% -10%, color-mix(in srgb, var(--color-accent) 6%, transparent), transparent 60%),
+    radial-gradient(900px 500px at 100% 0%, color-mix(in srgb, var(--color-accent) 4%, transparent), transparent 55%),
+    var(--color-bg);
+  background-attachment: fixed;
   color: var(--color-text);
   font-family: var(--font-sans);
   -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
 }
 
 .font-mono-nums {
@@ -72,4 +115,147 @@ body {
 :focus-visible {
   outline: 2px solid var(--color-accent);
   outline-offset: 2px;
+  border-radius: 4px;
+}
+
+::selection {
+  background: var(--color-accent);
+  color: white;
+}
+
+/* Shared primitives -- used across the analysis terminal, auth pages,
+   and shell so every card/section reads as one coherent system rather
+   than a pile of one-off utility strings. */
+
+.surface-card {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-xs);
+  transition: box-shadow 180ms var(--ease-out), border-color 180ms var(--ease-out), transform 180ms var(--ease-out);
+}
+
+.surface-card--interactive:hover {
+  box-shadow: var(--shadow-sm);
+  border-color: var(--color-border-strong);
+}
+
+.section-heading {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--color-text-faint);
+}
+
+.metric-label {
+  font-size: var(--text-metric-label);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--color-text-faint);
+}
+
+.metric-value {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  font-size: var(--text-metric-value);
+  font-weight: 700;
+  line-height: 1.1;
+}
+
+.card-heading {
+  font-size: var(--text-card-heading);
+  font-weight: 600;
+  color: var(--color-text);
+}
+
+.support-text {
+  font-size: var(--text-support);
+  color: var(--color-text-faint);
+  line-height: 1.4;
+}
+
+.section-heading::before {
+  content: '';
+  display: block;
+  width: 3px;
+  height: 0.85em;
+  border-radius: 2px;
+  background: var(--color-accent);
+  opacity: 0.55;
+}
+
+.btn-primary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  border-radius: var(--radius-sm);
+  background: linear-gradient(180deg, color-mix(in srgb, var(--color-accent) 100%, white 6%), var(--color-accent));
+  color: white;
+  font-weight: 600;
+  box-shadow: var(--shadow-sm);
+  transition: transform 140ms var(--ease-out), box-shadow 140ms var(--ease-out), filter 140ms var(--ease-out);
+}
+
+.btn-primary:hover:not(:disabled) {
+  filter: brightness(1.06);
+  box-shadow: var(--shadow-md);
+  transform: translateY(-1px);
+}
+
+.btn-primary:active:not(:disabled) {
+  transform: translateY(0);
+  filter: brightness(0.97);
+}
+
+.btn-primary:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+  box-shadow: none;
+  transform: none;
+}
+
+.input-field {
+  border: 1px solid var(--color-border-strong);
+  background: var(--color-surface);
+  color: var(--color-text);
+  border-radius: var(--radius-sm);
+  transition: border-color 140ms var(--ease-out), box-shadow 140ms var(--ease-out);
+}
+
+.input-field:focus {
+  border-color: var(--color-accent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-accent) 18%, transparent);
+  outline: none;
+}
+
+.input-field::placeholder {
+  color: var(--color-text-faint);
+}
+
+@keyframes fade-in-up {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-fade-in-up {
+  animation: fade-in-up 320ms var(--ease-out) both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    animation-duration: 0.001ms !important;
+    transition-duration: 0.001ms !important;
+  }
 }

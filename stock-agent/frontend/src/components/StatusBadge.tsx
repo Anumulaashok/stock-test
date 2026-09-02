@@ -21,7 +21,7 @@ const METRIC_STATUS_CLASS: Record<MetricStatus, string> = {
 export function MetricStatusBadge({ status }: { status: MetricStatus }) {
   return (
     <span
-      className={`inline-flex items-center rounded px-1.5 py-0.5 text-xs font-medium ${METRIC_STATUS_CLASS[status]}`}
+      className={`inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-semibold ${METRIC_STATUS_CLASS[status]}`}
     >
       {METRIC_STATUS_LABEL[status]}
     </span>
@@ -45,14 +45,14 @@ const SEVERITY_CLASS: Record<Severity, string> = {
 export function SeverityBadge({ severity }: { severity: Severity | null }) {
   if (severity === null) {
     return (
-      <span className="inline-flex items-center rounded border border-[var(--color-border)] px-1.5 py-0.5 text-xs font-medium text-[var(--color-text-faint)]">
+      <span className="inline-flex items-center rounded-full border border-[var(--color-border)] px-2 py-0.5 text-[11px] font-medium text-[var(--color-text-faint)]">
         Informational
       </span>
     )
   }
   return (
     <span
-      className={`inline-flex items-center rounded border px-1.5 py-0.5 text-xs font-semibold ${SEVERITY_CLASS[severity]}`}
+      className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[11px] font-semibold ${SEVERITY_CLASS[severity]}`}
     >
       {SEVERITY_LABEL[severity]}
     </span>
@@ -73,7 +73,7 @@ export function FreshnessBadge({ freshness }: { freshness: string }) {
         ? 'text-[var(--color-status-high)] bg-[var(--color-status-high)]/10'
         : 'text-[var(--color-text-faint)] bg-[var(--color-border)]'
   return (
-    <span className={`inline-flex items-center rounded px-1.5 py-0.5 text-xs font-medium ${cls}`}>
+    <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium ${cls}`}>
       {FRESHNESS_LABEL[freshness] ?? freshness}
     </span>
   )

@@ -33,6 +33,7 @@ def build_analyst_context(
     company = AnalystCompanyContext(
         name=financial_analysis.company,
         ticker=company_financials.ticker if company_financials else None,
+        currency=company_financials.currency if company_financials else None,
     )
 
     financial_metrics = [

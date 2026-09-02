@@ -21,12 +21,84 @@ meaningless input (zero/negative base for a fractional-power CAGR, a
 sign flip between the two endpoints) produces `INVALID`.
 """
 
+from datetime import datetime, timedelta
 from decimal import Decimal, InvalidOperation
 
 from app.models.financial_results import MetricStatus
 from app.models.forecasting import ForecastMetric, ForecastYear
 
 _PERCENT = "%"
+
+
+def project_calendar_date(anchor_date: str | None, day_offset: int) -> str | None:
+    """`anchor_date` (the latest observed price's date, ISO YYYY-MM-DD)
+    plus `day_offset` calendar days -- a naive calendar-day projection,
+    not trading-day-aware (weekends/holidays are not excluded). Returns
+    `None` when `anchor_date` is missing or unparseable, never a guessed
+    date."""
+    if not anchor_date:
+        return None
+    try:
+        parsed = datetime.fromisoformat(anchor_date)
+    except ValueError:
+        return None
+    return (parsed + timedelta(days=day_offset)).date().isoformat()
+
+
+def calculate_sma(values: list[Decimal], window: int) -> tuple[Decimal | None, MetricStatus, str | None]:
+    """Simple moving average of the most recent `window` closes.
+
+    `values` must already be in chronological (oldest-first) order —
+    only the trailing `window` entries are used.
+    """
+    if window <= 0:
+        return None, MetricStatus.INVALID, "moving average window must be positive"
+    if len(values) < window:
+        return (
+            None,
+            MetricStatus.UNAVAILABLE,
+            f"at least {window} historical closing prices are required (found {len(values)})",
+        )
+    recent = values[-window:]
+    return sum(recent) / window, MetricStatus.CALCULATED, None
+
+
+def classify_moving_average_crossover(
+    sma_short: Decimal | None,
+    sma_long: Decimal | None,
+) -> tuple[str | None, MetricStatus, str | None]:
+    """Golden-cross ("short" SMA above "long" SMA -> bullish) / death-cross
+    (short below long -> bearish) classification. Neither branch is a price
+    forecast by itself -- it is a well-known technical signal describing
+    trend direction, reported alongside (never blended into) the other
+    forecasting methods."""
+    if sma_short is None or sma_long is None:
+        return None, MetricStatus.UNAVAILABLE, "both moving averages are required to classify a crossover"
+    if sma_short > sma_long:
+        return "golden_cross", MetricStatus.CALCULATED, None
+    if sma_short < sma_long:
+        return "death_cross", MetricStatus.CALCULATED, None
+    return "neutral", MetricStatus.CALCULATED, None
+
+
+def calculate_rate_of_change(values: list[Decimal], window: int) -> tuple[Decimal | None, MetricStatus, str | None]:
+    """Percentage change between the latest close and the close `window`
+    trading days earlier -- a standard momentum indicator (ROC)."""
+    if window <= 0:
+        return None, MetricStatus.INVALID, "rate-of-change window must be positive"
+    if len(values) <= window:
+        return (
+            None,
+            MetricStatus.UNAVAILABLE,
+            f"at least {window + 1} historical closing prices are required (found {len(values)})",
+        )
+    begin_value = values[-(window + 1)]
+    end_value = values[-1]
+    if begin_value == 0:
+        return None, MetricStatus.UNAVAILABLE, "earliest closing price in the window is zero"
+    if begin_value < 0 or end_value < 0:
+        return None, MetricStatus.INVALID, "closing price cannot be negative"
+    return (end_value - begin_value) / begin_value * 100, MetricStatus.CALCULATED, None
 
 
 def calculate_cagr(

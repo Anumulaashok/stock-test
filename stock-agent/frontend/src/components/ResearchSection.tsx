@@ -5,7 +5,7 @@ import { FreshnessBadge } from './StatusBadge'
 function ResearchItemCard({ item }: { item: ReportResearchItem }) {
   const safeUrl = isSafeHttpUrl(item.url)
   return (
-    <li className="rounded border border-[var(--color-border)] bg-[var(--color-surface)] p-3">
+    <li className="surface-card surface-card--interactive p-4">
       <div className="flex items-start justify-between gap-2">
         <h3 className="font-medium">{item.title}</h3>
         <FreshnessBadge freshness={item.freshness} />
@@ -38,7 +38,7 @@ export function ResearchSection({ research }: { research: ReportResearchSection 
   if (!research || !research.available) {
     return (
       <section aria-labelledby="research-heading">
-        <h2 id="research-heading" className="mb-2 text-sm font-semibold uppercase tracking-wide text-[var(--color-text-muted)]">
+        <h2 id="research-heading" className="section-heading mb-3">
           Research
         </h2>
         <p className="text-sm text-[var(--color-text-faint)]">No research context is available for this analysis.</p>
@@ -48,7 +48,7 @@ export function ResearchSection({ research }: { research: ReportResearchSection 
 
   return (
     <section aria-labelledby="research-heading">
-      <h2 id="research-heading" className="mb-2 text-sm font-semibold uppercase tracking-wide text-[var(--color-text-muted)]">
+      <h2 id="research-heading" className="section-heading mb-3">
         Research
       </h2>
       {research.items.length === 0 ? (

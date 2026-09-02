@@ -8,7 +8,8 @@ looks like:
       "FiscalYear": 2026, "EndDate": "2026-03-31", "Type": "Annual",
       "stockFinancialMap": {
         "INC": [{"key": "Revenue", "value": "1075675.00", ...}, ...],
-        "BAL": [{"key": "TotalAssets", "value": "2178140.00", ...}, ...],
+        "BAL": [{"key": "TotalAssets", "value": "2178140.00", ...},
+                {"key": "CashEquivalents", "value": "26.58", ...}, ...],
         "CAS": [{"key": "CashfromOperatingActivities", "value": "192113.00", ...}, ...]
       }
     }
@@ -30,8 +31,11 @@ never re-derives EPS from net_income/shares_outstanding, which is the
 one place that invariant would matter.
 
 Currency: this endpoint does not report a currency field anywhere in
-the response, so `CompanyFinancials.currency` is always left `None`
-here rather than assumed to be "INR".
+the response, but IndianAPI is an Indian-market-only data source (NSE/
+BSE listings) -- every company it can return data for reports in INR,
+the same way the Crore scale above is a verified property of this
+provider rather than a per-company guess. `CompanyFinancials.currency`
+is therefore set to "INR" unconditionally here, not left `None`.
 """
 
 from decimal import Decimal, InvalidOperation
@@ -163,7 +167,10 @@ def map_balance_sheets(financials_raw: list[dict]) -> tuple[list[BalanceSheet], 
                     period=period,
                     total_assets=_to_decimal(bal.get("TotalAssets"), "total_assets", period, warnings),
                     current_assets=_to_decimal(bal.get("TotalCurrentAssets"), "current_assets", period, warnings),
-                    cash_and_equivalents=_to_decimal(bal.get("Cash"), "cash_and_equivalents", period, warnings),
+                    cash_and_equivalents=_to_decimal(
+                        bal.get("CashEquivalents") or bal.get("CashandShortTermInvestments"),
+                        "cash_and_equivalents", period, warnings,
+                    ),
                     total_liabilities=_to_decimal(bal.get("TotalLiabilities"), "total_liabilities", period, warnings),
                     current_liabilities=_to_decimal(
                         bal.get("TotalCurrentLiabilities"), "current_liabilities", period, warnings
@@ -225,7 +232,7 @@ def build_company_financials(
     cash_flow_statements, cash_flow_warnings = map_cash_flow_statements(financials_raw)
     warnings = income_warnings + balance_warnings + cash_flow_warnings
 
-    currency = None  # never reported by this endpoint; never guessed.
+    currency = "INR"  # not reported by the endpoint itself, but IndianAPI is Indian-market-only.
 
     fiscal_periods = sorted(
         {s.period for s in income_statements}

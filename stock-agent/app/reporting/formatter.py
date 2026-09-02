@@ -37,15 +37,22 @@ def format_ratio(value: Decimal | None) -> str | None:
     return f"{value.quantize(RATIO_QUANT, rounding=ROUND_HALF_UP)}"
 
 
-def format_metric_value(value: Decimal | None, unit: str | None) -> str | None:
+def format_metric_value(value: Decimal | None, unit: str | None, currency: str | None = None) -> str | None:
     """Formats a `FinancialMetricResult`/`ScoreComponent`-style value
-    according to its declared unit, without touching the underlying value."""
+    according to its declared unit, without touching the underlying value.
+
+    `unit == "USD"` is this codebase's generic tag for "this is a
+    currency-denominated value" (see `app/financial/calculations.py`),
+    not a literal assertion that the value is in US dollars — the actual
+    display currency is `currency` (the company's real reporting
+    currency, e.g. "INR"), which wins over the tag when supplied.
+    """
     if value is None:
         return None
     if unit == "%":
         return format_percent(value)
     if unit == "USD":
-        return format_currency(value)
+        return format_currency(value, currency)
     if unit == "ratio":
         return format_ratio(value)
     return str(value)

@@ -9,6 +9,7 @@ and never calls the LLM.
 """
 
 import logging
+from typing import Protocol
 
 from app.data.base import FinancialDataProvider
 from app.data.exceptions import ProviderError
@@ -20,6 +21,15 @@ from app.data.models import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+class FinancialDataFetcher(Protocol):
+    """Structural interface shared by `FinancialDataService` and
+    `app.cache.financial_data.CachedFinancialDataService` -- callers
+    (e.g. `AnalysisApplicationService`) depend on this, not a concrete
+    class, so caching can be layered in without touching them."""
+
+    async def get_company_financials(self, identifier: CompanyIdentifier) -> FinancialDataFetchResult: ...
 
 
 class FinancialDataService:

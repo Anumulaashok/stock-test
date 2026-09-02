@@ -24,6 +24,12 @@ Failure policy:
   that financial/valuation/scoring results already feed — splitting
   that composition across two services would mean the analyst's input
   is assembled in two different places instead of one.
+- Forecasting is optional the same way research is: it only runs when a
+  `forecasting_service` is injected, and a failure never changes
+  `status` — only a warning is added and `forecast` stays `None`.
+  Forecast output deliberately does NOT feed the analyst prompt or the
+  deterministic score/signal — it is presentation-layer extrapolation,
+  not evidence those stages should reason over.
 """
 
 import logging
@@ -56,6 +62,7 @@ class AnalysisPipelineService:
         scoring_service,
         analyst_service,
         research_service=None,
+        forecasting_service=None,
         clock: Callable[[], datetime] | None = None,
     ) -> None:
         self._financial_service = financial_service
@@ -63,11 +70,21 @@ class AnalysisPipelineService:
         self._scoring_service = scoring_service
         self._analyst_service = analyst_service
         self._research_service = research_service
+        self._forecasting_service = forecasting_service
         self._clock = clock or (lambda: datetime.now(timezone.utc))
 
-    async def analyze(self, request: AnalysisRequest) -> CombinedAnalysisResult:
+    async def analyze(self, request: AnalysisRequest, run_analyst: bool = True) -> CombinedAnalysisResult:
+        """`run_analyst=False` skips the AI analyst narrative entirely
+        (`analyst` stays `None`, `status` is `calculated` once the
+        deterministic stages succeed) — used by the Q&A assistant, which
+        needs the same deterministic context but not a second LLM call
+        for a narrative nobody asked for."""
         started_at = self._clock()
-        company = PipelineCompanyInfo(name=request.company_name, ticker=request.ticker)
+        company = PipelineCompanyInfo(
+            name=request.company_name,
+            ticker=request.ticker,
+            currency=request.company_financials.currency,
+        )
         warnings: list[str] = []
 
         try:
@@ -79,7 +96,8 @@ class AnalysisPipelineService:
         warnings.extend(financial_analysis.warnings)
 
         try:
-            valuation_input = build_valuation_input(request, financial_analysis)
+            valuation_input, valuation_input_warnings = build_valuation_input(request, financial_analysis)
+            warnings.extend(valuation_input_warnings)
             valuation = self._valuation_service.analyze(valuation_input)
         except Exception as exc:  # noqa: BLE001
             logger.error("Valuation stage failed: %s", exc)
@@ -100,6 +118,26 @@ class AnalysisPipelineService:
             )
 
         warnings.extend(scoring.warnings)
+
+        forecast = None
+        if self._forecasting_service is not None:
+            try:
+                forecast_kwargs = dict(
+                    company_financials=request.company_financials,
+                    financial_analysis=financial_analysis,
+                    valuation_input=valuation_input,
+                    recent_prices=request.recent_prices,
+                    ticker=request.ticker,
+                )
+                if request.projection_years is not None:
+                    forecast_kwargs["projection_years"] = request.projection_years
+                forecast = self._forecasting_service.forecast(**forecast_kwargs)
+            except Exception as exc:  # noqa: BLE001 - forecasting is optional; never fail the pipeline for it
+                logger.error("Forecasting stage raised unexpectedly: %s", exc)
+                forecast = None
+                warnings.append("Forecasting was requested but failed unexpectedly.")
+            else:
+                warnings.extend(forecast.warnings)
 
         research = None
         if request.research.enabled:
@@ -126,31 +164,35 @@ class AnalysisPipelineService:
                     else:
                         warnings.extend(research.warnings)
 
-        try:
-            analyst = await self._analyst_service.analyze(
-                financial_analysis, valuation, scoring, request.company_financials, research
-            )
-        except Exception as exc:  # noqa: BLE001 - analyst is optional; never fail the pipeline for it
-            logger.error("Analyst stage raised unexpectedly: %s", exc)
-            analyst = AnalystResult(
-                status="error",
-                error=AnalystError(
-                    code=AnalystErrorCode.LLM_UNAVAILABLE,
-                    message="The analyst stage failed unexpectedly.",
-                ),
-            )
-
-        if analyst.status == "success":
+        analyst = None
+        if not run_analyst:
             status = PipelineStatus.CALCULATED
         else:
-            status = PipelineStatus.PARTIAL
-            detail = analyst.error.message if analyst.error else "unknown error"
-            warnings.append(f"AI analyst stage did not complete successfully: {detail}")
+            try:
+                analyst = await self._analyst_service.analyze(
+                    financial_analysis, valuation, scoring, request.company_financials, research
+                )
+            except Exception as exc:  # noqa: BLE001 - analyst is optional; never fail the pipeline for it
+                logger.error("Analyst stage raised unexpectedly: %s", exc)
+                analyst = AnalystResult(
+                    status="error",
+                    error=AnalystError(
+                        code=AnalystErrorCode.LLM_UNAVAILABLE,
+                        message="The analyst stage failed unexpectedly.",
+                    ),
+                )
+
+            if analyst.status == "success":
+                status = PipelineStatus.CALCULATED
+            else:
+                status = PipelineStatus.PARTIAL
+                detail = analyst.error.message if analyst.error else "unknown error"
+                warnings.append(f"AI analyst stage did not complete successfully: {detail}")
 
         return CombinedAnalysisResult(
             company=company, status=status,
             financial_analysis=financial_analysis, valuation=valuation, scoring=scoring,
-            research=research, analyst=analyst, warnings=warnings,
+            forecast=forecast, research=research, analyst=analyst, warnings=warnings,
             metadata=self._metadata(started_at),
         )
 

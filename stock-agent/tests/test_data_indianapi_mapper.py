@@ -43,7 +43,7 @@ def entry(
     bal = {
         "TotalAssets": "2178140.00",
         "TotalCurrentAssets": "594249.00",
-        "Cash": "98592.00",
+        "CashEquivalents": "98592.00",
         "TotalLiabilities": "1274110.00",
         "TotalCurrentLiabilities": "541254.00",
         "TotalDebt": "398000.00",
@@ -177,6 +177,14 @@ def test_map_balance_sheet_missing_field_is_none():
     assert statements[0].total_debt is None
 
 
+def test_map_balance_sheet_cash_falls_back_to_cash_and_short_term_investments():
+    # Verified live: some periods report only "CashandShortTermInvestments",
+    # not "CashEquivalents" -- the fallback must still populate cash.
+    bal_overrides = {"CashEquivalents": None, "CashandShortTermInvestments": "27.08"}
+    statements, _ = map_balance_sheets([entry(bal_overrides=bal_overrides)])
+    assert statements[0].cash_and_equivalents == d("27.08")
+
+
 # --- Cash flow -----------------------------------------------------------------------
 
 
@@ -202,8 +210,8 @@ def test_build_company_financials_full_pipeline():
         company_name="Reliance Industries", ticker="Reliance", financials_raw=[entry()]
     )
     assert warnings == []
-    assert currency is None  # never reported by this endpoint; never guessed
-    assert company_financials.currency is None
+    assert currency == "INR"  # not reported by the endpoint; IndianAPI is Indian-market-only
+    assert company_financials.currency == "INR"
     assert company_financials.company_name == "Reliance Industries"
     assert company_financials.fiscal_periods == ["FY2026"]
     assert len(company_financials.income_statements) == 1
@@ -226,7 +234,7 @@ def test_build_company_financials_empty_input_produces_empty_but_valid_result():
     assert company_financials.income_statements == []
     assert company_financials.balance_sheets == []
     assert company_financials.cash_flow_statements == []
-    assert currency is None
+    assert currency == "INR"
     assert warnings == []
 
 

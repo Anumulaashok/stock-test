@@ -51,10 +51,24 @@ export interface ReportWarning {
   message: string
 }
 
+export type SignalLabel = 'strong' | 'moderate' | 'weak' | 'unavailable'
+export type SignalColor = 'green' | 'yellow' | 'red' | 'gray'
+export type TechnicalSignalLabel = 'bullish' | 'bearish' | 'neutral' | 'mixed' | 'unavailable'
+
+/** A deterministic strength/risk indicator derived from the score band
+ * and risk indicators -- not investment advice, never a buy/sell/hold
+ * recommendation (see app/reporting/signal.py). */
+export interface ReportSignal {
+  label: SignalLabel
+  color: SignalColor
+  reason: string
+}
+
 export interface ReportSummary {
   overall_score: string | null
   overall_status: string
   score_band: ScoreBand | null
+  signal: ReportSignal | null
   investment_thesis: string | null
   key_takeaways: string[]
 }
@@ -185,6 +199,95 @@ export interface ReportEvidence {
   research: string[]
 }
 
+// --- Forecast (deterministic extrapolation, never a recommendation) ---------------
+
+export interface ReportForecastYear {
+  year_offset: number
+  value: string | null
+  status: MetricStatus
+  formatted_value: string | null
+}
+
+export interface ReportForecastMetric {
+  name: string
+  unit: string | null
+  base_period: string | null
+  base_value: string | null
+  historical_cagr_percent: string | null
+  status: MetricStatus
+  reason: string | null
+  formatted_historical_cagr: string | null
+  projections: ReportForecastYear[]
+}
+
+export interface ReportValuationScenario {
+  scenario: string
+  fcf_growth_rate: string | null
+  value_per_share: string | null
+  status: MetricStatus
+  reason: string | null
+  formatted_value_per_share: string | null
+}
+
+export interface ReportPriceTrendPoint {
+  day_offset: number
+  date: string | null
+  projected_price: string | null
+  formatted_projected_price: string | null
+}
+
+export interface ReportMovingAverage {
+  window: number
+  value: string | null
+  status: MetricStatus
+  reason: string | null
+  formatted_value: string | null
+}
+
+export interface ReportMovingAverageCrossover {
+  short_window: number
+  long_window: number
+  signal: string | null
+  status: MetricStatus
+  reason: string | null
+}
+
+export interface ReportTechnicalMethod {
+  method: string
+  description: string
+  projected_price: string | null
+  projection_days: number
+  projected_date: string | null
+  status: MetricStatus
+  reason: string | null
+  formatted_projected_price: string | null
+}
+
+export interface ReportTechnicalSignal {
+  label: TechnicalSignalLabel
+  color: SignalColor
+  reason: string
+}
+
+export interface ReportForecastSection {
+  source: string
+  available: boolean
+  projection_years: number | null
+  financial_metrics: ReportForecastMetric[]
+  valuation_scenarios: ReportValuationScenario[]
+  price_trend: ReportPriceTrendPoint[]
+  price_trend_status: MetricStatus | null
+  price_trend_reason: string | null
+  price_trend_disclaimer: string | null
+  moving_averages: ReportMovingAverage[]
+  crossover: ReportMovingAverageCrossover | null
+  technical_methods: ReportTechnicalMethod[]
+  technical_disclaimer: string | null
+  technical_signal: ReportTechnicalSignal | null
+  current_price: string | null
+  formatted_current_price: string | null
+}
+
 export interface InvestmentResearchReport {
   company: ReportCompany
   status: ReportStatus
@@ -193,6 +296,7 @@ export interface InvestmentResearchReport {
   valuation: ReportValuationSection | null
   scoring: ReportScoringSection | null
   risk: ReportRiskSection | null
+  forecast: ReportForecastSection | null
   research: ReportResearchSection | null
   analyst: ReportAnalystSection | null
   evidence: ReportEvidence
@@ -260,6 +364,33 @@ export interface CombinedAnalysisResult {
 export interface TickerAnalysisRequest {
   ticker: string
   include_report: true
+  include_price_trend_forecast?: boolean
+}
+
+// --- AI Q&A assistant -----------------------------------------------------------------
+// Mirrors app/models/qa.py. Deliberately has no buy/sell/hold or probability
+// field -- see app/qa/prompts.py for why the assistant never produces one.
+
+export interface QAResponse {
+  answer: string
+  evidence: AnalystEvidence
+  recommendation_declined: boolean
+}
+
+export interface QAError {
+  code: string
+  message: string
+}
+
+export interface QAResult {
+  status: ResultStatus
+  response: QAResponse | null
+  error: QAError | null
+}
+
+export interface QATickerRequest {
+  ticker: string
+  question: string
 }
 
 // --- Auth / portfolio (Step 11) -----------------------------------------------------

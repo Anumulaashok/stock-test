@@ -1,11 +1,21 @@
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { describe, it, expect, vi } from 'vitest'
+import { beforeEach, describe, it, expect, vi } from 'vitest'
 import { AnalysisPage } from './AnalysisPage'
+import { AuthProvider } from '../auth/AuthContext'
 import { buildReport } from '../test/fixtures'
 import * as analysisApi from '../api/analysis'
+import * as searchApi from '../api/search'
 import { ApiError } from '../api/client'
 import type { CombinedAnalysisResult } from '../types/backend'
+
+function renderPage(props?: Parameters<typeof AnalysisPage>[0]) {
+  return render(
+    <AuthProvider>
+      <AnalysisPage {...props} />
+    </AuthProvider>,
+  )
+}
 
 async function search(ticker: string) {
   await userEvent.type(screen.getByLabelText(/ticker symbol/i), ticker)
@@ -13,6 +23,13 @@ async function search(ticker: string) {
 }
 
 describe('AnalysisPage', () => {
+  beforeEach(() => {
+    // The search bar's own autocomplete suggestions are covered by
+    // SearchBar.test.tsx -- keep them out of the way here.
+    vi.spyOn(searchApi, 'searchStocks').mockResolvedValue([])
+  })
+
+
   it('shows a loading state, then the successful result', async () => {
     const result: CombinedAnalysisResult = {
       company: { name: 'Acme Corp', ticker: 'ACME' },
@@ -28,7 +45,7 @@ describe('AnalysisPage', () => {
     })
     vi.spyOn(analysisApi, 'analyzeTicker').mockReturnValue(pending)
 
-    render(<AnalysisPage />)
+    renderPage()
     await search('ACME')
 
     expect(await screen.findByText(/analyzing ACME/i)).toBeInTheDocument()
@@ -55,7 +72,7 @@ describe('AnalysisPage', () => {
     }
     vi.spyOn(analysisApi, 'analyzeTicker').mockResolvedValue(result)
 
-    render(<AnalysisPage />)
+    renderPage()
     await search('ACME')
 
     await waitFor(() => expect(screen.getByText('Analysis partially completed')).toBeInTheDocument())
@@ -82,7 +99,7 @@ describe('AnalysisPage', () => {
     }
     vi.spyOn(analysisApi, 'analyzeTicker').mockResolvedValue(result)
 
-    render(<AnalysisPage />)
+    renderPage()
     await search('ACME')
 
     await waitFor(() => expect(screen.getByText('Analysis failed')).toBeInTheDocument())
@@ -92,7 +109,7 @@ describe('AnalysisPage', () => {
   it('renders a friendly error banner on a transport-level failure, never a raw exception', async () => {
     vi.spyOn(analysisApi, 'analyzeTicker').mockRejectedValue(new ApiError('Could not reach the analysis server. Check your connection.', 'network'))
 
-    render(<AnalysisPage />)
+    renderPage()
     await search('ACME')
 
     await waitFor(() => expect(screen.getByText('Could not complete analysis')).toBeInTheDocument())

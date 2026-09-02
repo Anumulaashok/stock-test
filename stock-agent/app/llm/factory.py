@@ -34,6 +34,9 @@ def get_llm_provider(settings: Settings) -> LLMProvider:
             connect_timeout_seconds=settings.local_llm_connect_timeout_seconds,
             timeout_seconds=settings.local_llm_timeout_seconds,
             enable_thinking=settings.local_llm_enable_thinking,
+            reasoning_mode=settings.local_llm_reasoning_mode,
+            reasoning_effort=settings.local_llm_reasoning_effort,
+            json_mode=settings.local_llm_json_mode,
         )
 
     raise ValueError(f"Unsupported LLM_PROVIDER: {settings.llm_provider!r}")

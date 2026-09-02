@@ -72,13 +72,39 @@ class IndianAPIClient:
         self._max_retries = max_retries
 
     async def get_stock(self, name: str) -> dict:
+        data = await self._get_json_object("/stock", {"name": name})
+        # HTTP 200 + {"error": "..."} is this provider's not-found
+        # signal — verified live against a real unmatched company name.
+        if "error" in data:
+            raise ProviderError(
+                FinancialDataErrorCode.COMPANY_NOT_FOUND,
+                f"no data was found for '{name}'",
+            )
+        return data
+
+    async def get_historical_prices(self, name: str, period: str = "1yr") -> dict:
+        """Daily closing-price history from the `/historical_data` endpoint
+        (same account/auth as `/stock`) — verified live: returns
+        `{"datasets": [{"metric": "Price", "values": [[date, price], ...]}]}`.
+        """
+        data = await self._get_json_object(
+            "/historical_data", {"stock_name": name, "period": period, "filter": "price"}
+        )
+        if "error" in data:
+            raise ProviderError(
+                FinancialDataErrorCode.COMPANY_NOT_FOUND,
+                f"no historical price data was found for '{name}'",
+            )
+        return data
+
+    async def _get_json_object(self, path: str, params: dict) -> dict:
         attempt = 0
         while True:
             try:
                 async with httpx.AsyncClient(timeout=self._timeout) as client:
                     response = await client.get(
-                        f"{self._base_url}/stock",
-                        params={"name": name},
+                        f"{self._base_url}{path}",
+                        params=params,
                         headers={"X-Api-Key": self._api_key},
                     )
             except httpx.TimeoutException as exc:
@@ -86,7 +112,7 @@ class IndianAPIClient:
                     attempt += 1
                     await asyncio.sleep(0.5 * attempt)
                     continue
-                logger.error("Financial data provider request timed out for %s", name)
+                logger.error("Financial data provider request timed out for %s", path)
                 raise ProviderError(
                     FinancialDataErrorCode.PROVIDER_UNAVAILABLE,
                     "financial data provider request timed out",
@@ -96,7 +122,7 @@ class IndianAPIClient:
                     attempt += 1
                     await asyncio.sleep(0.5 * attempt)
                     continue
-                logger.error("Financial data provider request failed for %s: %s", name, exc)
+                logger.error("Financial data provider request failed for %s: %s", path, exc)
                 raise ProviderError(
                     FinancialDataErrorCode.PROVIDER_UNAVAILABLE,
                     "financial data provider request failed",
@@ -110,7 +136,7 @@ class IndianAPIClient:
             if response.status_code == 404:
                 raise ProviderError(
                     FinancialDataErrorCode.COMPANY_NOT_FOUND,
-                    f"no data was found for '{name}'",
+                    f"no data was found for the requested identifier at {path}",
                 )
             if response.status_code == 429:
                 retry_after = _parse_retry_after(response.headers.get("Retry-After"))
@@ -154,14 +180,6 @@ class IndianAPIClient:
                 raise ProviderError(
                     FinancialDataErrorCode.SCHEMA_MISMATCH,
                     "financial data provider response was not a JSON object",
-                )
-
-            # HTTP 200 + {"error": "..."} is this provider's not-found
-            # signal — verified live against a real unmatched company name.
-            if "error" in data:
-                raise ProviderError(
-                    FinancialDataErrorCode.COMPANY_NOT_FOUND,
-                    f"no data was found for '{name}'",
                 )
 
             return data

@@ -83,6 +83,68 @@ def render_markdown(report: InvestmentResearchReport) -> str:
             for indicator in indicators:
                 lines.append(f"- **{indicator.name}**: {indicator.reason}")
 
+    if report.forecast and report.forecast.available:
+        lines.append("\n## Forecast\n")
+        lines.append(
+            "_Deterministic extrapolation of historical data — not a recommendation "
+            "or a single asserted target._\n"
+        )
+        if report.forecast.financial_metrics:
+            lines.append("\n### Financial Projections\n")
+            lines.append("| Metric | Historical CAGR | Status |")
+            lines.append("|---|---:|---|")
+            for metric in report.forecast.financial_metrics:
+                cagr = metric.formatted_historical_cagr or "unavailable"
+                lines.append(f"| {metric.name} | {cagr} | {metric.status} |")
+                for year in metric.projections:
+                    value = year.formatted_value or "unavailable"
+                    lines.append(f"|   Year +{year.year_offset} | {value} | {year.status} |")
+        if report.forecast.valuation_scenarios:
+            lines.append("\n### Valuation Scenarios (DCF)\n")
+            lines.append("| Scenario | FCF Growth | Value/Share | Status |")
+            lines.append("|---|---:|---:|---|")
+            for scenario in report.forecast.valuation_scenarios:
+                growth = f"{scenario.fcf_growth_rate}" if scenario.fcf_growth_rate is not None else "unavailable"
+                value = scenario.formatted_value_per_share or "unavailable"
+                lines.append(f"| {scenario.scenario} | {growth} | {value} | {scenario.status} |")
+        if report.forecast.price_trend:
+            lines.append("\n### Price Trend Extrapolation\n")
+            lines.append(f"_{report.forecast.price_trend_disclaimer}_\n")
+            lines.append("| Day | Date | Projected Price |")
+            lines.append("|---:|---|---:|")
+            for point in report.forecast.price_trend:
+                value = point.formatted_projected_price or "unavailable"
+                lines.append(f"| +{point.day_offset} | {point.date or 'unknown'} | {value} |")
+        elif report.forecast.price_trend_status:
+            lines.append(f"\n### Price Trend Extrapolation\n\n_{report.forecast.price_trend_reason}_")
+        if report.forecast.moving_averages or report.forecast.technical_methods:
+            lines.append("\n### Technical Indicators\n")
+            if report.forecast.technical_signal:
+                sig = report.forecast.technical_signal
+                lines.append(f"Technical signal: **{sig.label}** — {sig.reason}\n")
+            if report.forecast.technical_disclaimer:
+                lines.append(f"_{report.forecast.technical_disclaimer}_\n")
+            if report.forecast.moving_averages:
+                lines.append("| Moving Average | Value | Status |")
+                lines.append("|---|---:|---|")
+                for ma in report.forecast.moving_averages:
+                    value = ma.formatted_value or "unavailable"
+                    lines.append(f"| {ma.window}-day SMA | {value} | {ma.status} |")
+            if report.forecast.crossover:
+                crossover = report.forecast.crossover
+                signal = crossover.signal or "unavailable"
+                lines.append(f"\nCrossover signal ({crossover.short_window}-day vs {crossover.long_window}-day): **{signal}**")
+                if crossover.reason:
+                    lines.append(f"_{crossover.reason}_")
+            if report.forecast.technical_methods:
+                lines.append("\n| Method | Projected Price (+{}d) | Status |".format(
+                    report.forecast.technical_methods[0].projection_days
+                ))
+                lines.append("|---|---:|---|")
+                for method in report.forecast.technical_methods:
+                    value = method.formatted_projected_price or "unavailable"
+                    lines.append(f"| {method.method} | {value} | {method.status} |")
+
     if report.research and report.research.available:
         lines.append("\n## Research Context\n")
         for item in report.research.items:

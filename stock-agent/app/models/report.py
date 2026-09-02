@@ -39,15 +39,29 @@ class ReportWarning(BaseModel):
     future UI can explain *why* something is missing rather than just
     that it is."""
 
-    source: str  # "financial_analysis" | "valuation" | "scoring" | "research" | "analyst" | "pipeline" | "report"
+    source: str  # "financial_analysis" | "valuation" | "scoring" | "forecast" | "research" | "analyst" | "pipeline" | "report"
     code: str | None = None
     message: str
+
+
+class ReportSignal(BaseModel):
+    """A deterministic, color-coded strength/risk indicator derived from
+    the already-computed score band and risk indicators (see
+    `app/reporting/signal.py`). This is a data-quality/strength signal,
+    not investment advice — it never says "buy", "sell", or "hold", and
+    it computes nothing new; it only recolors `ScoringResult` fields
+    that already exist."""
+
+    label: str  # "strong" | "moderate" | "weak" | "unavailable"
+    color: str  # "green" | "yellow" | "red" | "gray"
+    reason: str
 
 
 class ReportSummary(BaseModel):
     overall_score: Decimal | None = None
     overall_status: str = "unavailable"
     score_band: str | None = None
+    signal: ReportSignal | None = None
     investment_thesis: str | None = None
     key_takeaways: list[str] = Field(default_factory=list)
 
@@ -189,6 +203,108 @@ class ReportAnalystSection(BaseModel):
     caveats: list[str] = Field(default_factory=list)
 
 
+# --- Forecast ---------------------------------------------------------------------------
+
+
+class ReportForecastYear(BaseModel):
+    year_offset: int
+    value: Decimal | None
+    status: str
+    formatted_value: str | None = None
+
+
+class ReportForecastMetric(BaseModel):
+    name: str
+    unit: str | None
+    base_period: str | None
+    base_value: Decimal | None
+    historical_cagr_percent: Decimal | None
+    status: str
+    reason: str | None = None
+    formatted_historical_cagr: str | None = None
+    projections: list[ReportForecastYear] = Field(default_factory=list)
+
+
+class ReportValuationScenario(BaseModel):
+    scenario: str
+    fcf_growth_rate: Decimal | None
+    value_per_share: Decimal | None
+    status: str
+    reason: str | None = None
+    formatted_value_per_share: str | None = None
+
+
+class ReportPriceTrendPoint(BaseModel):
+    day_offset: int
+    date: str | None = None
+    projected_price: Decimal | None
+    formatted_projected_price: str | None = None
+
+
+class ReportMovingAverage(BaseModel):
+    window: int
+    value: Decimal | None
+    status: str
+    reason: str | None = None
+    formatted_value: str | None = None
+
+
+class ReportMovingAverageCrossover(BaseModel):
+    short_window: int
+    long_window: int
+    signal: str | None = None
+    status: str
+    reason: str | None = None
+
+
+class ReportTechnicalMethod(BaseModel):
+    method: str
+    description: str
+    projected_price: Decimal | None
+    projection_days: int
+    projected_date: str | None = None
+    status: str
+    reason: str | None = None
+    formatted_projected_price: str | None = None
+
+
+class ReportTechnicalSignal(BaseModel):
+    """A deterministic, color-coded technical-trend signal derived from
+    the already-computed moving-average crossover and price-vs-average
+    position (see `app/reporting/technical_signal.py`). This is
+    explicitly NOT a buy/sell/hold recommendation — it computes nothing
+    new; it only labels a combination of signals that already exist."""
+
+    label: str  # "bullish" | "bearish" | "neutral" | "mixed" | "unavailable"
+    color: str  # "green" | "yellow" | "red" | "gray"
+    reason: str
+
+
+class ReportForecastSection(BaseModel):
+    """Deterministic extrapolations of historical data — never a
+    recommendation and never a single asserted price target. Every
+    projected number carries the historical basis and/or growth-rate
+    assumption it was derived from, so it stays as auditable as any
+    other section."""
+
+    source: str = "forecast"
+    available: bool
+    projection_years: int | None = None
+    financial_metrics: list[ReportForecastMetric] = Field(default_factory=list)
+    valuation_scenarios: list[ReportValuationScenario] = Field(default_factory=list)
+    price_trend: list[ReportPriceTrendPoint] = Field(default_factory=list)
+    price_trend_status: str | None = None
+    price_trend_reason: str | None = None
+    price_trend_disclaimer: str | None = None
+    moving_averages: list[ReportMovingAverage] = Field(default_factory=list)
+    crossover: ReportMovingAverageCrossover | None = None
+    technical_methods: list[ReportTechnicalMethod] = Field(default_factory=list)
+    technical_disclaimer: str | None = None
+    technical_signal: ReportTechnicalSignal | None = None
+    current_price: Decimal | None = None
+    formatted_current_price: str | None = None
+
+
 # --- Evidence / top-level report -------------------------------------------------------
 
 
@@ -208,7 +324,10 @@ class InvestmentResearchReport(BaseModel):
 
     `status` mirrors `CombinedAnalysisResult.status` exactly — the
     report never independently decides completeness. No field here is a
-    buy/sell/hold recommendation, a target price, or a fabricated score.
+    buy/sell/hold recommendation or a fabricated score. `forecast` is
+    the one section built from projected rather than reported numbers —
+    every value in it is explicitly tied to a stated growth assumption
+    or historical basis rather than asserted as a single target.
     """
 
     company: ReportCompany
@@ -218,6 +337,7 @@ class InvestmentResearchReport(BaseModel):
     valuation: ReportValuationSection | None = None
     scoring: ReportScoringSection | None = None
     risk: ReportRiskSection | None = None
+    forecast: ReportForecastSection | None = None
     research: ReportResearchSection | None = None
     analyst: ReportAnalystSection | None = None
     evidence: ReportEvidence = Field(default_factory=ReportEvidence)

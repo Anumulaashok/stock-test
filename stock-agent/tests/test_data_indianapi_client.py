@@ -48,6 +48,30 @@ async def test_sends_api_key_header_and_name_param():
 
 @pytest.mark.asyncio
 @respx.mock
+async def test_get_historical_prices_sends_period_and_filter_params():
+    route = respx.get(f"{BASE_URL}/historical_data").mock(
+        return_value=httpx.Response(200, json={"datasets": [{"metric": "Price", "values": []}]})
+    )
+    data = await _client().get_historical_prices("Danlaw", period="3yr")
+
+    assert data == {"datasets": [{"metric": "Price", "values": []}]}
+    request = route.calls.last.request
+    assert request.url.params["stock_name"] == "Danlaw"
+    assert request.url.params["period"] == "3yr"
+    assert request.url.params["filter"] == "price"
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_get_historical_prices_error_body_raises_company_not_found():
+    respx.get(f"{BASE_URL}/historical_data").mock(return_value=httpx.Response(200, json={"error": "not found"}))
+    with pytest.raises(ProviderError) as exc_info:
+        await _client().get_historical_prices("Nonexistent")
+    assert exc_info.value.code == FinancialDataErrorCode.COMPANY_NOT_FOUND
+
+
+@pytest.mark.asyncio
+@respx.mock
 async def test_200_with_error_body_raises_company_not_found():
     # Verified live: an unmatched company name returns HTTP 200 with an
     # {"error": ...} body, not a 404.

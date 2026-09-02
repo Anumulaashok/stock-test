@@ -13,6 +13,7 @@ from datetime import datetime, timezone
 
 from app.models.analyst import AnalystEvidence, AnalystResult
 from app.models.financial_results import FinancialAnalysisResult
+from app.models.forecasting import ForecastResult
 from app.models.report import (
     InvestmentResearchReport,
     ReportAnalystCategoryAnalysis,
@@ -22,7 +23,13 @@ from app.models.report import (
     ReportEvidence,
     ReportFinancialMetric,
     ReportFinancialSection,
+    ReportForecastMetric,
+    ReportForecastSection,
+    ReportForecastYear,
     ReportMetadata,
+    ReportMovingAverage,
+    ReportMovingAverageCrossover,
+    ReportPriceTrendPoint,
     ReportResearchItem,
     ReportResearchSection,
     ReportRiskIndicator,
@@ -30,8 +37,12 @@ from app.models.report import (
     ReportScoreComponent,
     ReportScoringSection,
     ReportStatus,
+    ReportSignal,
     ReportSummary,
+    ReportTechnicalMethod,
+    ReportTechnicalSignal,
     ReportValuationMethod,
+    ReportValuationScenario,
     ReportValuationSection,
     ReportWarning,
 )
@@ -42,6 +53,8 @@ from app.pipeline.models import CombinedAnalysisResult, PipelineStatus
 from app.reporting.constants import REPORT_VERSION
 from app.reporting.evidence import filter_evidence, valid_report_evidence_names
 from app.reporting.formatter import format_currency, format_metric_value, format_percent
+from app.reporting.signal import compute_signal
+from app.reporting.technical_signal import compute_technical_signal
 from app.reporting.warnings import collect_warnings
 from app.scoring.bands import score_band
 from app.scoring.thresholds import (
@@ -68,7 +81,9 @@ class ReportService:
 
     def generate(self, combined: CombinedAnalysisResult) -> InvestmentResearchReport:
         generated_at = self._clock().isoformat()
-        company = ReportCompany(name=combined.company.name, ticker=combined.company.ticker)
+        company = ReportCompany(
+            name=combined.company.name, ticker=combined.company.ticker, currency=combined.company.currency
+        )
         metadata = self._build_metadata(combined, generated_at)
 
         if combined.status is PipelineStatus.FAILED or combined.financial_analysis is None:
@@ -83,12 +98,14 @@ class ReportService:
             combined.financial_analysis, combined.valuation, combined.scoring, combined.research
         )
 
-        financials_section = self._build_financial_section(combined.financial_analysis)
+        currency = combined.company.currency
+        financials_section = self._build_financial_section(combined.financial_analysis, currency)
         valuation_section = (
-            self._build_valuation_section(combined.valuation) if combined.valuation else None
+            self._build_valuation_section(combined.valuation, currency) if combined.valuation else None
         )
         scoring_section = self._build_scoring_section(combined.scoring) if combined.scoring else None
         risk_section = self._build_risk_section(combined.scoring) if combined.scoring else None
+        forecast_section = self._build_forecast_section(combined.forecast, currency)
         research_section = self._build_research_section(combined.research)
         analyst_section, evidence_warnings = self._build_analyst_section(
             combined.analyst, valid_evidence
@@ -108,6 +125,7 @@ class ReportService:
             valuation=valuation_section,
             scoring=scoring_section,
             risk=risk_section,
+            forecast=forecast_section,
             research=research_section,
             analyst=analyst_section,
             evidence=evidence,
@@ -138,11 +156,14 @@ class ReportService:
             overall_score=scoring.overall_score if scoring else None,
             overall_status=scoring.overall_status.value if scoring else "unavailable",
             score_band=scoring.band.value if scoring and scoring.band else None,
+            signal=compute_signal(scoring),
             investment_thesis=thesis,
             key_takeaways=takeaways,
         )
 
-    def _build_financial_section(self, fa: FinancialAnalysisResult) -> ReportFinancialSection:
+    def _build_financial_section(
+        self, fa: FinancialAnalysisResult, currency: str | None = None
+    ) -> ReportFinancialSection:
         buckets: dict[str, list[ReportFinancialMetric]] = {
             "profitability": [], "growth": [], "financial_health": [], "cash_flow": [], "other": [],
         }
@@ -151,7 +172,7 @@ class ReportService:
                 name=metric.name, value=metric.value, unit=metric.unit,
                 status=metric.status.value, reason=metric.reason,
                 source_periods=metric.source_periods,
-                formatted_value=format_metric_value(metric.value, metric.unit),
+                formatted_value=format_metric_value(metric.value, metric.unit, currency),
             )
             if metric.name in PROFITABILITY_WEIGHTS:
                 buckets["profitability"].append(report_metric)
@@ -166,7 +187,9 @@ class ReportService:
 
         return ReportFinancialSection(periods_analyzed=fa.periods_analyzed, **buckets)
 
-    def _build_valuation_section(self, valuation: ValuationRange) -> ReportValuationSection:
+    def _build_valuation_section(
+        self, valuation: ValuationRange, currency: str | None = None
+    ) -> ReportValuationSection:
         methods = [
             ReportValuationMethod(
                 method=result.method, value_per_share=result.value_per_share,
@@ -176,14 +199,14 @@ class ReportService:
                     result.upside_downside_status.value if result.upside_downside_status else None
                 ),
                 assumptions={k: str(v) for k, v in result.assumptions.items()},
-                formatted_value_per_share=format_currency(result.value_per_share),
+                formatted_value_per_share=format_currency(result.value_per_share, currency),
                 formatted_upside_downside=format_percent(result.upside_downside_percent),
             )
             for result in valuation.results
         ]
         return ReportValuationSection(
             current_share_price=valuation.current_share_price,
-            formatted_current_share_price=format_currency(valuation.current_share_price),
+            formatted_current_share_price=format_currency(valuation.current_share_price, currency),
             methods=methods,
         )
 
@@ -222,6 +245,133 @@ class ReportService:
             bucket = _SEVERITY_BUCKETS.get(indicator.severity, "informational")
             buckets[bucket].append(report_indicator)
         return ReportRiskSection(**buckets)
+
+    def _build_forecast_section(
+        self, forecast: ForecastResult | None, currency: str | None = None
+    ) -> ReportForecastSection:
+        if forecast is None:
+            return ReportForecastSection(available=False)
+
+        financial_metrics: list[ReportForecastMetric] = []
+        if forecast.financial_forecast:
+            for metric in forecast.financial_forecast.metrics:
+                financial_metrics.append(
+                    ReportForecastMetric(
+                        name=metric.name,
+                        unit=metric.unit,
+                        base_period=metric.base_period,
+                        base_value=metric.base_value,
+                        historical_cagr_percent=metric.historical_cagr_percent,
+                        status=metric.status.value,
+                        reason=metric.reason,
+                        formatted_historical_cagr=format_percent(metric.historical_cagr_percent),
+                        projections=[
+                            ReportForecastYear(
+                                year_offset=year.year_offset,
+                                value=year.value,
+                                status=year.status.value,
+                                formatted_value=format_metric_value(year.value, metric.unit, currency),
+                            )
+                            for year in metric.projections
+                        ],
+                    )
+                )
+
+        valuation_scenarios: list[ReportValuationScenario] = []
+        if forecast.valuation_forecast:
+            for scenario in forecast.valuation_forecast.scenarios:
+                valuation_scenarios.append(
+                    ReportValuationScenario(
+                        scenario=scenario.scenario,
+                        fcf_growth_rate=scenario.fcf_growth_rate,
+                        value_per_share=scenario.result.value_per_share,
+                        status=scenario.result.status.value,
+                        reason=scenario.result.reason,
+                        formatted_value_per_share=format_currency(scenario.result.value_per_share, currency),
+                    )
+                )
+
+        price_trend: list[ReportPriceTrendPoint] = []
+        price_trend_status = None
+        price_trend_reason = None
+        price_trend_disclaimer = None
+        if forecast.price_trend_forecast:
+            trend = forecast.price_trend_forecast
+            price_trend_status = trend.status.value
+            price_trend_reason = trend.reason
+            price_trend_disclaimer = trend.disclaimer
+            price_trend = [
+                ReportPriceTrendPoint(
+                    day_offset=point.day_offset,
+                    date=point.date,
+                    projected_price=point.projected_price,
+                    formatted_projected_price=format_currency(point.projected_price, currency),
+                )
+                for point in trend.points
+            ]
+
+        moving_averages: list[ReportMovingAverage] = []
+        crossover: ReportMovingAverageCrossover | None = None
+        technical_methods: list[ReportTechnicalMethod] = []
+        technical_disclaimer = None
+        technical_signal: ReportTechnicalSignal | None = None
+        current_price = None
+        if forecast.technical_forecast:
+            technical = forecast.technical_forecast
+            technical_disclaimer = technical.disclaimer
+            technical_signal = compute_technical_signal(technical)
+            current_price = technical.current_price
+            moving_averages = [
+                ReportMovingAverage(
+                    window=ma.window,
+                    value=ma.value,
+                    status=ma.status.value,
+                    reason=ma.reason,
+                    formatted_value=format_currency(ma.value, currency),
+                )
+                for ma in technical.moving_averages
+            ]
+            if technical.crossover:
+                crossover = ReportMovingAverageCrossover(
+                    short_window=technical.crossover.short_window,
+                    long_window=technical.crossover.long_window,
+                    signal=technical.crossover.signal,
+                    status=technical.crossover.status.value,
+                    reason=technical.crossover.reason,
+                )
+            technical_methods = [
+                ReportTechnicalMethod(
+                    method=method.method,
+                    description=method.description,
+                    projected_price=method.projected_price,
+                    projection_days=method.projection_days,
+                    projected_date=method.projected_date,
+                    status=method.status.value,
+                    reason=method.reason,
+                    formatted_projected_price=format_currency(method.projected_price, currency),
+                )
+                for method in technical.methods
+            ]
+
+        return ReportForecastSection(
+            available=True,
+            projection_years=(
+                forecast.financial_forecast.projection_years if forecast.financial_forecast else None
+            ),
+            financial_metrics=financial_metrics,
+            valuation_scenarios=valuation_scenarios,
+            price_trend=price_trend,
+            price_trend_status=price_trend_status,
+            price_trend_reason=price_trend_reason,
+            price_trend_disclaimer=price_trend_disclaimer,
+            moving_averages=moving_averages,
+            crossover=crossover,
+            technical_methods=technical_methods,
+            technical_disclaimer=technical_disclaimer,
+            technical_signal=technical_signal,
+            current_price=current_price,
+            formatted_current_price=format_currency(current_price, currency),
+        )
 
     def _build_research_section(self, research: ResearchResult | None) -> ReportResearchSection:
         if research is None or research.status != "success":

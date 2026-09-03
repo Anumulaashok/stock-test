@@ -119,6 +119,28 @@ class DataSourceManager:
                 return index > 0
         return False
 
+    def provenance_snapshot(self) -> dict[str, dict]:
+        """Capture which source served each category right now.
+
+        `last_attempts` is overwritten by each call, and one research run
+        fetches the market snapshot twice (raw capture, then again inside
+        `analyze_by_ticker`). Callers that need provenance must snapshot
+        it immediately after their own call rather than reading it back
+        later, or they record the wrong call's attempts."""
+        return {
+            category: {
+                "source": next(
+                    (a.provider for a in attempts if a.status == SourceStatus.SUCCESS), None
+                ),
+                "fallback_used": next(
+                    (i > 0 for i, a in enumerate(attempts) if a.status == SourceStatus.SUCCESS),
+                    False,
+                ),
+                "attempts": [a.describe() for a in attempts],
+            }
+            for category, attempts in self.last_attempts.items()
+        }
+
     def _log(self, category: Category, ticker: str, attempt: SourceAttempt, fallback: bool) -> None:
         logger.info(
             "source_call ticker=%s category=%s provider=%s status=%s duration_ms=%s fallback=%s",
@@ -136,7 +158,10 @@ class DataSourceManager:
         identity = self._identity.resolve_offline(identifier.ticker)
         chain = self._registry.chain_for(Category.FINANCIALS)
         attempts: list[SourceAttempt] = []
-        last_result: FinancialDataFetchResult | None = None
+        # The primary's verdict is the informative one to report when the
+        # whole chain fails -- "company not found" from the authoritative
+        # source beats "rate limited" from the last fallback tried.
+        primary_result: FinancialDataFetchResult | None = None
 
         for name in chain:
             fetcher = self._financial_providers.get(name)
@@ -171,13 +196,14 @@ class DataSourceManager:
                 return result
 
             self._registry.health(name).record_failure(status, attempt.detail)
-            last_result = result
+            if primary_result is None:
+                primary_result = result
             if status not in FALLBACK_TRIGGERING:
                 break
 
         self._record(Category.FINANCIALS, attempts)
-        if last_result is not None:
-            return last_result
+        if primary_result is not None:
+            return primary_result
         return FinancialDataFetchResult(
             status="error",
             error=FinancialDataError(
@@ -197,7 +223,7 @@ class DataSourceManager:
         identity = self._identity.resolve_offline(ticker)
         chain = self._registry.chain_for(Category.MARKET_QUOTE)
         attempts: list[SourceAttempt] = []
-        last_result: MarketSnapshotResult | None = None
+        primary_result: MarketSnapshotResult | None = None
 
         for name in chain:
             fetcher = self._market_providers.get(name)
@@ -235,11 +261,12 @@ class DataSourceManager:
                 return result
 
             self._registry.health(name).record_failure(status, attempt.detail)
-            last_result = result
+            if primary_result is None:
+                primary_result = result
 
         self._record(Category.MARKET_QUOTE, attempts)
-        if last_result is not None:
-            return last_result
+        if primary_result is not None:
+            return primary_result
         return MarketSnapshotResult(
             status="error",
             error=MarketDataError(
@@ -247,6 +274,12 @@ class DataSourceManager:
                 message="No market data provider is configured and capable of supplying a quote.",
             ),
         )
+
+    async def get_quote(self, ticker: str) -> MarketSnapshotResult:
+        """Same shape as `MarketDataService.get_quote`, so callers that
+        only need a live price (portfolio/watchlist) swap in directly
+        without pulling a full price history."""
+        return await self.get_snapshot(ticker, include_recent_prices=False)
 
     async def _apply_historical_primary(
         self, identity: CompanyIdentity, result: MarketSnapshotResult, *, market_source: str
@@ -260,11 +293,20 @@ class DataSourceManager:
         chain = self._registry.chain_for(Category.HISTORICAL_PRICE)
         provider = self._historical_provider
         if provider is None or self._db is None or not chain or chain[0] != provider.name:
-            # No historical primary configured ahead of the market
-            # provider; whatever the quote came with stands.
+            # No dedicated historical primary is available, so the series
+            # came from whichever market provider served the quote. Report
+            # that provider by name rather than the configured chain head,
+            # which may be a different provider entirely.
             self._record(
                 Category.HISTORICAL_PRICE,
-                [SourceAttempt(provider=market_source, status=SourceStatus.SUCCESS)],
+                [
+                    SourceAttempt(
+                        provider=market_source,
+                        status=SourceStatus.SUCCESS
+                        if result.snapshot.recent_prices
+                        else SourceStatus.UNAVAILABLE,
+                    )
+                ],
             )
             return
 
@@ -295,11 +337,10 @@ class DataSourceManager:
             )
             attempts.append(fallback)
             self._log(Category.HISTORICAL_PRICE, identity.canonical_ticker, fallback, True)
-            if result.snapshot.warnings is not None:
-                result.snapshot.warnings.append(
-                    f"historical prices from {provider.name} unavailable "
-                    f"({attempt.status.value}); used {market_source}"
-                )
+            result.snapshot.warnings.append(
+                f"historical prices from {provider.name} unavailable "
+                f"({attempt.status.value}); used {market_source}"
+            )
 
         self._record(Category.HISTORICAL_PRICE, attempts)
 

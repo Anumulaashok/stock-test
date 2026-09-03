@@ -295,6 +295,22 @@ async def test_all_financial_providers_failing_returns_a_structured_error():
     assert manager.resolved_source(Category.FINANCIALS) is None
 
 
+async def test_exhausted_chain_reports_the_primarys_error_not_the_last_fallbacks():
+    """A nonexistent ticker should surface COMPANY_NOT_FOUND from the
+    authoritative source, not RATE_LIMITED from whichever fallback was
+    tried last."""
+    manager = _manager(
+        financial={
+            INDIANAPI: FakeFinancialProvider(
+                _financial_error(FinancialDataErrorCode.COMPANY_NOT_FOUND)
+            ),
+            FMP: FakeFinancialProvider(_financial_error(FinancialDataErrorCode.RATE_LIMITED)),
+        }
+    )
+    result = await manager.get_company_financials(CompanyIdentifier(ticker="NOSUCHTICKER"))
+    assert result.error.code == FinancialDataErrorCode.COMPANY_NOT_FOUND
+
+
 async def test_no_capable_financial_provider_is_reported_not_crashed():
     """Screener cannot produce statements, so a Screener-only financial
     chain must return a structured error rather than attempting it."""
@@ -388,6 +404,58 @@ async def test_unconfigured_provider_is_never_attempted():
 
 
 # --- Primary-source-wins merge rule ------------------------------------------
+
+
+async def test_provenance_must_be_snapshotted_because_a_later_call_overwrites_it():
+    """One research run fetches the market snapshot twice. Reading
+    provenance back later would report the second call's attempts, so
+    callers snapshot it immediately after their own call."""
+    failing_then_working = FakeMarketProvider(_snapshot())
+    manager = _manager(
+        market={YFINANCE: FakeMarketProvider(_market_error(MarketDataErrorCode.TICKER_NOT_FOUND)), FMP: failing_then_working}
+    )
+
+    await manager.get_snapshot(TICKER, include_recent_prices=False)
+    captured = manager.provenance_snapshot()
+
+    assert captured[Category.MARKET_QUOTE.value]["source"] == FMP
+    assert captured[Category.MARKET_QUOTE.value]["fallback_used"] is True
+    assert captured[Category.MARKET_QUOTE.value]["attempts"] == [
+        "yfinance=UNAVAILABLE",
+        "fmp=SUCCESS",
+    ]
+
+    # A second call overwrites live state; the captured snapshot does not move.
+    manager._market_providers = {YFINANCE: FakeMarketProvider(_snapshot())}
+    await manager.get_snapshot(TICKER, include_recent_prices=False)
+    assert manager.resolved_source(Category.MARKET_QUOTE) == YFINANCE
+    assert captured[Category.MARKET_QUOTE.value]["source"] == FMP
+
+
+async def test_get_quote_skips_history_for_portfolio_callers():
+    yfinance = FakeMarketProvider(_snapshot(prices=[_point("2026-09-01", "410")]))
+    screener = FakeHistoricalProvider(points=[_point("2026-09-02", "421.50")])
+    manager = _manager(market={YFINANCE: yfinance}, historical=screener)
+
+    result = await manager.get_quote(TICKER)
+
+    assert result.status == "success"
+    # No historical resolution happens for a plain quote.
+    assert screener.calls == 0
+
+
+async def test_historical_source_is_reported_as_the_provider_that_actually_served_it():
+    """With no Screener primary available, the series came from the market
+    provider -- provenance must name that provider, not the configured
+    chain head."""
+    fmp = FakeMarketProvider(_snapshot(prices=[_point("2026-09-01", "410")]))
+    manager = _manager(
+        market={FMP: fmp},
+        market_chain=[FMP],
+        historical_chain=[YFINANCE, FMP],
+    )
+    await manager.get_snapshot(TICKER)
+    assert manager.resolved_source(Category.HISTORICAL_PRICE) == FMP
 
 
 def test_primary_source_wins_for_a_shared_date():

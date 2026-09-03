@@ -81,6 +81,15 @@ class Settings(BaseSettings):
     indian_api_timeout_seconds: float = Field(default=15.0)
     indian_api_max_retries: int = Field(default=2)
 
+    # Screener.in (unofficial chart API) — one-time manual historical
+    # bulk-import backfill only (app.data.screener_import_service), never
+    # a live MarketDataProvider/FinancialDataProvider. No key required;
+    # session_cookie is optional, for whenever a Screener endpoint turns
+    # out to need an authenticated session.
+    screener_base_url: str = Field(default="https://www.screener.in")
+    screener_session_cookie: str | None = Field(default=None)
+    screener_timeout_seconds: float = Field(default=20.0)
+
     # External research/market-context provider (Step 8). "finnhub" is the
     # only one implemented so far. Research is optional — the app runs
     # fully without it, and a caller must explicitly opt in per request.
@@ -95,15 +104,74 @@ class Settings(BaseSettings):
     research_stale_after_days: int = Field(default=14)
 
     # Market data provider SELECTION only — mirrors financial_data_provider's
-    # policy. "fmp" reuses the same FMP_* connection settings above (same
-    # vendor/account) but is a fully separate abstraction (`app/market/`)
-    # from FinancialDataProvider — market quotes are not financial
-    # statements and must never be mixed into that domain.
+    # policy. "fmp"/"indianapi" reuse the same connection settings above
+    # (same vendor/account) but this is a fully separate abstraction
+    # (`app/market/`) from FinancialDataProvider — market quotes are not
+    # financial statements and must never be mixed into that domain.
+    # "yfinance" needs no API key and supplies market_cap/year_high/
+    # year_low/real OHLCV the other two don't for NSE/BSE tickers.
     market_data_provider: str = Field(default="fmp")
     market_data_connect_timeout_seconds: float = Field(default=5.0)
     market_data_timeout_seconds: float = Field(default=10.0)
     market_data_max_retries: int = Field(default=1)
     market_data_recent_prices_limit: int = Field(default=210)
+
+    # Provider PRIORITY CHAINS (comma-separated, highest priority first).
+    # These supersede the singular *_DATA_PROVIDER settings above, which
+    # are kept as the fallback default so existing deployments that set
+    # only the singular var keep the provider they already had. See
+    # `app/sources/manager.py`.
+    #
+    # Note MARKET_DATA_PROVIDERS defaults to yfinance first: the singular
+    # market_data_provider defaults to "fmp" above, but FMP returns HTTP
+    # 402 for every NSE/BSE symbol, so a deploy without a .env would
+    # otherwise select the one provider that cannot serve Indian tickers.
+    financial_data_providers: str | None = Field(default=None)
+    market_data_providers: str | None = Field(default=None)
+    historical_price_providers: str = Field(default="screener,yfinance,fmp")
+    company_search_providers: str = Field(default="screener,local")
+
+    def _chain(self, configured: str | None, default: str) -> list[str]:
+        raw = configured if configured is not None and configured.strip() else default
+        seen: list[str] = []
+        for name in raw.split(","):
+            cleaned = name.strip().lower()
+            if cleaned and cleaned not in seen:
+                seen.append(cleaned)
+        return seen
+
+    def financial_provider_chain(self) -> list[str]:
+        return self._chain(self.financial_data_providers, self.financial_data_provider)
+
+    def market_provider_chain(self) -> list[str]:
+        singular = self.market_data_provider.strip().lower()
+        # "fmp" is the code default rather than a deliberate choice, and FMP
+        # cannot serve NSE/BSE symbols — fall back to yfinance-first so an
+        # unconfigured deploy doesn't select the one provider that can't work.
+        default = "yfinance,fmp" if singular == "fmp" else singular
+        return self._chain(self.market_data_providers, default)
+
+    def historical_price_chain(self) -> list[str]:
+        return self._chain(self.historical_price_providers, "screener,yfinance,fmp")
+
+    def company_search_chain(self) -> list[str]:
+        return self._chain(self.company_search_providers, "screener,local")
+
+    # News providers (Market Opportunity sector news, Ask AI grounding).
+    # Both optional — the app runs fully without either configured.
+    newsdata_api_key: str | None = Field(default=None)
+    newsdata_base_url: str = Field(default="https://newsdata.io/api/1")
+    newsapi_api_key: str | None = Field(default=None)
+    newsapi_base_url: str = Field(default="https://newsapi.org/v2")
+    news_connect_timeout_seconds: float = Field(default=5.0)
+    news_timeout_seconds: float = Field(default=10.0)
+    news_cache_ttl_seconds: int = Field(default=1800)
+
+    # Market Opportunity sector ranking cache. One computation evaluates
+    # every constituent ticker across every sector (one real provider
+    # call per ticker) -- a longer TTL than the per-ticker financial
+    # data cache keeps the dashboard cheap to load repeatedly.
+    sector_overview_cache_ttl_seconds: int = Field(default=1800)
 
     # Database — defaults to a local SQLite file so the app runs with zero
     # external setup; override with a Postgres URL in production
@@ -136,6 +204,11 @@ class Settings(BaseSettings):
     # don't change intra-day, so a long default TTL is safe; a market
     # quote is live data, so its default TTL is seconds, not days.
     financial_data_cache_ttl_seconds: int = Field(default=7 * 24 * 60 * 60)  # 7 days
+    # A failed financial-data fetch is cached too, but briefly -- long
+    # enough to collapse a burst of repeated requests for a known-bad
+    # ticker, short enough that a fixed provider issue (or a fallback
+    # data source recovering) is reflected again quickly.
+    financial_data_negative_cache_ttl_seconds: int = Field(default=120)  # 2 minutes
     market_data_cache_ttl_seconds: int = Field(default=30)  # seconds
 
 

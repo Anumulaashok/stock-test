@@ -76,7 +76,7 @@ def test_expired_screener_cookie_surfaces_in_the_status_endpoint(monkeypatch):
     get_settings.cache_clear()
     respx.get(SEARCH_URL).mock(return_value=httpx.Response(403))
 
-    response = client.get(ENDPOINT)
+    response = client.get(ENDPOINT, params={"validate_screener": "true"})
     get_settings.cache_clear()
 
     sources = _by_name(response.json())
@@ -91,7 +91,7 @@ def test_valid_screener_cookie_reports_success(monkeypatch):
     get_settings.cache_clear()
     respx.get(SEARCH_URL).mock(return_value=httpx.Response(200, json=[]))
 
-    sources = _by_name(client.get(ENDPOINT).json())
+    sources = _by_name(client.get(ENDPOINT, params={"validate_screener": "true"}).json())
     get_settings.cache_clear()
 
     assert sources["screener"]["status"] == "SUCCESS"
@@ -108,6 +108,22 @@ def test_fmp_limitation_is_disclosed_rather_than_reported_as_a_healthy_fallback(
     assert sources["fmp"]["configured"] is True
     # Configured and capable, but the NSE constraint is stated outright.
     assert "402" in sources["fmp"]["limitation"]
+
+
+@respx.mock
+def test_status_does_not_probe_screener_by_default(monkeypatch):
+    """This endpoint sits on the Intelligence page's hot path; probing
+    Screener on every page load would make an ordinarily cheap status
+    check as expensive as the thing it is checking."""
+    monkeypatch.setenv("SCREENER_SESSION_COOKIE", "a-cookie")
+    get_settings.cache_clear()
+    route = respx.get(SEARCH_URL).mock(return_value=httpx.Response(200, json=[]))
+
+    sources = _by_name(client.get(ENDPOINT).json())
+    get_settings.cache_clear()
+
+    assert route.call_count == 0
+    assert sources["screener"]["status"] == "UNKNOWN"
 
 
 def test_no_secrets_are_returned(monkeypatch):

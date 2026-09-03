@@ -87,6 +87,39 @@ async def test_screener_backfill_never_clobbers_a_live_yfinance_row(db_session):
 
 
 @pytest.mark.asyncio
+async def test_a_partial_update_does_not_blank_fields_it_did_not_report(db_session):
+    """A field the new write left unset (None) must not overwrite a value
+    a previous write already recorded -- an update that only has a price
+    (e.g. a quote) must not erase an existing delivery percentage."""
+    await upsert_daily_price(
+        db_session, "HUDCO", date(2026, 9, 3),
+        source="screener_import", price=d("181.07"), volume=d(1000), delivery_percentage=d("42.5"),
+    )
+    await db_session.commit()
+
+    await upsert_daily_price(
+        db_session, "HUDCO", date(2026, 9, 3), source="screener_import", price=d("182.00")
+    )
+    await db_session.commit()
+
+    row = await _get_row(db_session, "HUDCO", date(2026, 9, 3))
+    assert row.price == d("182.00")
+    assert row.volume == d(1000)
+    assert row.delivery_percentage == d("42.5")
+
+
+async def test_two_live_sources_on_the_same_date_still_overwrite(db_session):
+    """Backfill-over-live is blocked; live-over-live still applies."""
+    await upsert_daily_price(db_session, "HUDCO", date(2026, 9, 3), source="yfinance_daily", price=d("183.00"))
+    await db_session.commit()
+    await upsert_daily_price(db_session, "HUDCO", date(2026, 9, 3), source="fmp_daily", price=d("183.50"))
+    await db_session.commit()
+
+    row = await _get_row(db_session, "HUDCO", date(2026, 9, 3))
+    assert row.price == d("183.50")
+    assert row.source == "fmp_daily"
+
+
 async def test_different_dates_do_not_collide(db_session):
     await upsert_daily_price(db_session, "HUDCO", date(2026, 9, 2), source="screener_import", price=d(1))
     await upsert_daily_price(db_session, "HUDCO", date(2026, 9, 3), source="screener_import", price=d(2))

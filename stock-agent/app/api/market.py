@@ -157,28 +157,37 @@ async def set_screener_cookie(
 
 @router.get("/data-sources/status")
 async def get_data_source_status(
+    validate_screener: bool = Query(
+        default=False,
+        description="Also check the Screener cookie live. Off by default: this endpoint is "
+        "on the Intelligence page's hot path, and validation is a real network call.",
+    ),
     settings: Settings = Depends(get_settings),
     db: AsyncSession = Depends(get_db),
 ) -> DataSourceStatusResponse:
     """Which sources are configured, what each is actually capable of,
     which categories each owns, and how each is currently behaving.
 
-    Screener's cookie is validated live because an expired cookie is the
-    failure users most need to see; the other sources report their
-    configuration state without being probed. No secrets are returned.
+    Screener's health reflects its last known state (from the cookie
+    endpoint or a previous `validate_screener=true` call here) unless
+    the caller opts into a live check -- probing Screener on every page
+    load would make an ordinarily cheap status check as expensive as the
+    thing it is checking. No secrets are returned.
     """
     runtime_value = await get_runtime_setting(db, SCREENER_SESSION_COOKIE_KEY)
     cookie = runtime_value or settings.screener_session_cookie
     registry = build_source_registry(settings, screener_cookie=cookie)
 
     screener_status: str | None = None
-    if cookie:
+    if cookie and validate_screener:
         client = ScreenerClient(
             base_url=settings.screener_base_url,
             session_cookie=cookie,
             timeout_seconds=settings.screener_timeout_seconds,
         )
         screener_status = (await validate_cookie(client, source=None)).status.value
+    elif cookie:
+        screener_status = SourceStatus.UNKNOWN.value
 
     sources: list[DataSourceStatus] = []
     for name, definition in SOURCE_DEFINITIONS.items():

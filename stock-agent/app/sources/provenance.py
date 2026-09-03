@@ -24,6 +24,7 @@ class SourceStatus(StrEnum):
     NOT_CONFIGURED = "NOT_CONFIGURED"
     UNREACHABLE = "UNREACHABLE"
     ERROR = "ERROR"
+    UNKNOWN = "UNKNOWN"
 
 
 # Statuses that mean "this provider cannot answer right now, try the next

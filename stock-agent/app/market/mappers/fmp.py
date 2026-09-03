@@ -1,9 +1,8 @@
 """Maps FMP's market-quote/historical-price schema into canonical
 `MarketQuote`/`HistoricalPricePoint` models. Pure functions only — no HTTP.
 
-See `app.market.providers.fmp_client` for the field-name provenance
-caveat (documented from FMP's own docs + third-party corroboration, not
-independently live-verified the way Steps 7/8 verified their providers).
+See `app.market.providers.fmp_client` for the field-name provenance --
+live-verified against this project's own FMP trial key.
 """
 
 from datetime import datetime, timezone

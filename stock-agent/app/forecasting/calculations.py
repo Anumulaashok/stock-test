@@ -45,6 +45,33 @@ def project_calendar_date(anchor_date: str | None, day_offset: int) -> str | Non
     return (parsed + timedelta(days=day_offset)).date().isoformat()
 
 
+def project_trading_date(anchor_date: str | None, trading_days_offset: int) -> str | None:
+    """`anchor_date` plus `trading_days_offset` trading days, counting only
+    Monday-Friday. Used for the multi-horizon forecast's period dates
+    (`app/forecasting/service.py`'s `_build_multi_horizon_forecast`),
+    where a weekly/monthly point landing on a weekend would be visibly
+    wrong. Market holidays are NOT modeled -- this app supports both US
+    (FMP) and Indian (NSE/BSE, IndianAPI) tickers, and there is no single
+    holiday calendar that is correct for both, so hardcoding one exchange's
+    calendar would silently mislabel the other's dates. Skipping weekends
+    only is a smaller, honestly-documented approximation than that.
+    Returns `None` when `anchor_date` is missing or unparseable, exactly
+    like `project_calendar_date`."""
+    if not anchor_date:
+        return None
+    try:
+        parsed = datetime.fromisoformat(anchor_date)
+    except ValueError:
+        return None
+    current = parsed
+    counted = 0
+    while counted < trading_days_offset:
+        current += timedelta(days=1)
+        if current.weekday() < 5:
+            counted += 1
+    return current.date().isoformat()
+
+
 def calculate_sma(values: list[Decimal], window: int) -> tuple[Decimal | None, MetricStatus, str | None]:
     """Simple moving average of the most recent `window` closes.
 

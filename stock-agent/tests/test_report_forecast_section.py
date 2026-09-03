@@ -5,14 +5,22 @@ from app.models.financial_results import FinancialAnalysisResult
 from app.models.financial_results import MetricStatus as FMS
 from app.models.forecasting import (
     FinancialForecast,
+    ForecastHorizon,
     ForecastMetric,
     ForecastResult,
     ForecastYear,
+    HorizonForecast,
+    MovingAverageCrossover,
+    MovingAverageResult,
+    MultiHorizonForecast,
     PriceTrendForecast,
     PriceTrendPoint,
+    TechnicalForecast,
+    TechnicalForecastMethod,
     ValuationForecastRange,
     ValuationScenario,
 )
+from app.models.market import HistoricalPricePoint
 from app.models.scoring import CategoryScore, ScoreStatus, ScoringResult
 from app.models.valuation import ValuationRange, ValuationResult
 from app.pipeline.models import CombinedAnalysisResult, ExecutionMetadata, PipelineCompanyInfo, PipelineStatus
@@ -126,7 +134,7 @@ def test_forecast_section_carries_price_trend_and_disclaimer():
         company="Acme Corp",
         price_trend_forecast=PriceTrendForecast(
             ticker="ACME", based_on_points=10, status=FMS.CALCULATED,
-            points=[PriceTrendPoint(day_offset=1, projected_price=d(101))],
+            points=[PriceTrendPoint(period=1, day_offset=1, projected_price=d(101))],
         ),
     )
     combined = _base_combined(forecast)
@@ -136,3 +144,84 @@ def test_forecast_section_carries_price_trend_and_disclaimer():
     assert report.forecast.price_trend_status == "calculated"
     assert report.forecast.price_trend[0].formatted_projected_price == "$101.00"
     assert "not a prediction" in report.forecast.price_trend_disclaimer
+
+
+# --- multi-horizon forecast section ----------------------------------------------------
+
+
+def _horizon_forecast(horizon: ForecastHorizon, label: str, projected_price: Decimal) -> HorizonForecast:
+    price_trend = PriceTrendForecast(
+        ticker="ACME", horizon=horizon, based_on_points=210, status=FMS.CALCULATED,
+        points=[PriceTrendPoint(period=1, day_offset=5, date="2026-09-10", projected_price=projected_price)],
+    )
+    technical = TechnicalForecast(
+        ticker="ACME", horizon=horizon, based_on_points=210, current_price=d(100), projection_days=5,
+        moving_averages=[MovingAverageResult(window=50, value=d(105), status=FMS.CALCULATED)],
+        crossover=MovingAverageCrossover(
+            short_window=50, long_window=200, signal="golden_cross", status=FMS.CALCULATED
+        ),
+        methods=[
+            TechnicalForecastMethod(
+                method="linear_regression", description="OLS trend, restated.", projected_price=projected_price,
+                projection_days=5, horizon=horizon, horizon_period=12, projected_date="2026-09-10",
+                status=FMS.CALCULATED,
+            )
+        ],
+    )
+    return HorizonForecast(horizon=horizon, label=label, price_trend=price_trend, technical=technical)
+
+
+def test_forecast_section_carries_multi_horizon_forecasts():
+    forecast = ForecastResult(
+        company="Acme Corp",
+        horizons=MultiHorizonForecast(
+            daily=_horizon_forecast(ForecastHorizon.DAILY, "30 Trading Days", d(105)),
+            weekly=_horizon_forecast(ForecastHorizon.WEEKLY, "12 Weeks", d(110)),
+            monthly=_horizon_forecast(ForecastHorizon.MONTHLY, "12 Months", d(120)),
+        ),
+    )
+    combined = _base_combined(forecast)
+
+    report = ReportService(clock=_clock).generate(combined)
+
+    assert report.forecast.horizons is not None
+    assert report.forecast.horizons.daily.label == "30 Trading Days"
+    assert report.forecast.horizons.weekly.label == "12 Weeks"
+    assert report.forecast.horizons.monthly.label == "12 Months"
+    assert report.forecast.horizons.weekly.price_trend[0].formatted_projected_price == "$110.00"
+    assert report.forecast.horizons.monthly.technical_methods[0].horizon == "monthly"
+    assert report.forecast.horizons.monthly.technical_methods[0].horizon_period == 12
+    assert report.forecast.horizons.daily.technical_signal is not None
+
+
+def test_forecast_section_horizons_is_none_when_forecast_has_no_horizons():
+    forecast = ForecastResult(company="Acme Corp")
+    combined = _base_combined(forecast)
+
+    report = ReportService(clock=_clock).generate(combined)
+
+    assert report.forecast.horizons is None
+
+
+def test_forecast_section_exposes_full_ohlcv():
+    forecast = ForecastResult(
+        company="Acme Corp",
+        historical_prices=[
+            HistoricalPricePoint(
+                timestamp="2026-01-01", open=d(99), high=d(101), low=d(98), close=d(100), volume=d(1000)
+            ),
+        ],
+    )
+    combined = _base_combined(forecast)
+
+    report = ReportService(clock=_clock).generate(combined)
+
+    assert len(report.forecast.historical_prices) == 1
+    point = report.forecast.historical_prices[0]
+    assert point.date == "2026-01-01"
+    assert point.close == d(100)
+    assert point.formatted_close == "$100.00"
+    assert point.open == d(99)
+    assert point.high == d(101)
+    assert point.low == d(98)
+    assert point.volume == d(1000)

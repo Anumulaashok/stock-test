@@ -1,31 +1,36 @@
 import { useEffect, useState } from 'react'
-import { analyzeTicker } from '../api/analysis'
+import { fetchLatestResearch, fetchResearchRun, runResearch } from '../api/research'
 import { addWatchlistItem, fetchWatchlist, removeWatchlistItem } from '../api/portfolio'
 import { ApiError } from '../api/client'
-import type { CombinedAnalysisResult } from '../types/backend'
+import type { ResearchRunResult } from '../types/backend'
 import { useAuth } from '../auth/AuthContext'
 import { SearchBar } from '../components/SearchBar'
 import { LoadingState } from '../components/LoadingState'
 import { ErrorBanner } from '../components/ErrorBanner'
 import { StatusBanner } from '../components/StatusBanner'
-import { InvestmentSummary } from '../components/InvestmentSummary'
-import { ScoreOverview } from '../components/ScoreOverview'
 import { ValuationSection } from '../components/ValuationSection'
 import { ForecastSection } from '../components/ForecastSection'
 import { FinancialSection } from '../components/FinancialSection'
-import { RiskSection } from '../components/RiskSection'
 import { ResearchSection } from '../components/ResearchSection'
+import { ResearchSnapshotBanner } from '../components/ResearchSnapshotBanner'
+import { ResearchHistorySection } from '../components/ResearchHistorySection'
 import { AnalystSection } from '../components/AnalystSection'
-import { AskAssistantSection } from '../components/AskAssistantSection'
+import { StickyAskAssistant } from '../components/StickyAskAssistant'
 import { WarningsSection } from '../components/WarningsSection'
 import { DataQualitySection } from '../components/DataQualitySection'
 import { buildEvidenceValueMap } from '../lib/evidenceValues'
+import { StockHeader } from '../components/stock/StockHeader'
+import { InvestmentVerdict } from '../components/stock/InvestmentVerdict'
+import { ScoreBreakdown } from '../components/stock/ScoreBreakdown'
+import { WhyThisScore } from '../components/stock/WhyThisScore'
+import { InvestorSummary } from '../components/stock/InvestorSummary'
+import { RiskOverview } from '../components/stock/RiskOverview'
 
 type ViewState =
   | { kind: 'idle' }
   | { kind: 'loading'; ticker: string }
   | { kind: 'error'; ticker: string; error: ApiError }
-  | { kind: 'result'; ticker: string; result: CombinedAnalysisResult }
+  | { kind: 'result'; ticker: string; run: ResearchRunResult }
 
 interface AnalysisPageProps {
   /** Set when navigating in from elsewhere (e.g. the dashboard's search
@@ -43,14 +48,20 @@ export function AnalysisPage({ initialTicker }: AnalysisPageProps = {}) {
   const [inWatchlist, setInWatchlist] = useState<boolean | null>(null)
   const [watchlistPending, setWatchlistPending] = useState(false)
   const [watchlistError, setWatchlistError] = useState<string | null>(null)
+  const [refreshing, setRefreshing] = useState(false)
 
-  async function handleSearch(ticker: string) {
+  async function handleSearch(ticker: string, forceRefresh = false) {
     setState({ kind: 'loading', ticker })
     setInWatchlist(null)
     setWatchlistError(null)
     try {
-      const result = await analyzeTicker(ticker)
-      setState({ kind: 'result', ticker, result })
+      // A plain search always surfaces the latest already-computed
+      // result (any date, normal or force-refresh) instead of kicking
+      // off a redundant new run -- only compute when nothing exists yet.
+      const run = forceRefresh
+        ? await runResearch(ticker, true)
+        : (await fetchLatestResearch(ticker)) ?? (await runResearch(ticker, false))
+      setState({ kind: 'result', ticker, run })
     } catch (error) {
       setState({
         kind: 'error',
@@ -65,7 +76,43 @@ export function AnalysisPage({ initialTicker }: AnalysisPageProps = {}) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [initialTicker])
 
-  const report = state.kind === 'result' ? state.result.report : null
+  async function handleRefresh(forceRefresh: boolean) {
+    if (state.kind !== 'result') return
+    const ticker = state.ticker
+    setRefreshing(true)
+    try {
+      const run = await runResearch(ticker, forceRefresh)
+      setState({ kind: 'result', ticker, run })
+    } catch (error) {
+      setState({
+        kind: 'error',
+        ticker,
+        error: error instanceof ApiError ? error : new ApiError('Unexpected error.', 'network'),
+      })
+    } finally {
+      setRefreshing(false)
+    }
+  }
+
+  async function handleSelectHistoryRun(researchRunId: string) {
+    if (state.kind !== 'result') return
+    const ticker = state.ticker
+    setRefreshing(true)
+    try {
+      const run = await fetchResearchRun(ticker, researchRunId)
+      setState({ kind: 'result', ticker, run })
+    } catch (error) {
+      setState({
+        kind: 'error',
+        ticker,
+        error: error instanceof ApiError ? error : new ApiError('Unexpected error.', 'network'),
+      })
+    } finally {
+      setRefreshing(false)
+    }
+  }
+
+  const report = state.kind === 'result' ? state.run.result.report : null
   const resolvedTicker = state.kind === 'result' ? state.ticker : null
 
   // Look up whether the currently-analyzed ticker is already saved --
@@ -109,7 +156,7 @@ export function AnalysisPage({ initialTicker }: AnalysisPageProps = {}) {
   }
 
   return (
-    <main className="mx-auto flex max-w-5xl flex-col gap-8 px-4 py-10 sm:px-6">
+    <main className="mx-auto flex max-w-5xl flex-col gap-8 px-4 pb-32 pt-10 sm:px-6 sm:pb-36">
       <div className="animate-fade-in-up flex flex-col items-center gap-2 text-center">
         <h1 className="text-2xl font-bold tracking-tight sm:text-3xl">Stock Research</h1>
         <p className="max-w-md text-sm text-[var(--color-text-faint)]">
@@ -131,25 +178,38 @@ export function AnalysisPage({ initialTicker }: AnalysisPageProps = {}) {
 
       {state.kind === 'result' && report && (
         <div className="animate-fade-in-up flex flex-col gap-10">
+          <ResearchSnapshotBanner
+            run={state.run}
+            refreshing={refreshing}
+            onRefresh={() => handleRefresh(false)}
+            onForceRefresh={() => handleRefresh(true)}
+          />
           <StatusBanner status={report.status} ticker={state.ticker} />
-          <InvestmentSummary
-            report={report}
+
+          {/* Decision -> explanation -> evidence -> detail (see the plan's
+              §33 flow): verdict and header first, raw sections last. */}
+          <StockHeader
+            company={report.company}
+            market={report.market}
             authStatus={authStatus}
             inWatchlist={inWatchlist}
             watchlistPending={watchlistPending}
             watchlistError={watchlistError}
             onToggleWatchlist={handleToggleWatchlist}
           />
-          <ScoreOverview scoring={report.scoring} />
+          <InvestmentVerdict summary={report.summary} />
+          <ScoreBreakdown scoring={report.scoring} />
+          <WhyThisScore report={report} />
+          <InvestorSummary report={report} />
+          <RiskOverview risk={report.risk} />
           <ValuationSection valuation={report.valuation} />
-          <ForecastSection forecast={report.forecast} />
-          <RiskSection risk={report.risk} />
-          <AnalystSection analyst={report.analyst} evidenceValues={buildEvidenceValueMap(report)} />
           <FinancialSection financials={report.financials} />
+          <ForecastSection forecast={report.forecast} />
           <ResearchSection research={report.research} />
+          <AnalystSection analyst={report.analyst} evidenceValues={buildEvidenceValueMap(report)} />
           <DataQualitySection report={report} />
           <WarningsSection warnings={report.warnings} />
-          <AskAssistantSection ticker={state.ticker} />
+          <ResearchHistorySection ticker={state.ticker} onSelectRun={handleSelectHistoryRun} />
         </div>
       )}
 
@@ -158,6 +218,8 @@ export function AnalysisPage({ initialTicker }: AnalysisPageProps = {}) {
           The analysis completed but no structured report was returned.
         </p>
       )}
+
+      <StickyAskAssistant ticker={state.kind === 'result' ? state.ticker : null} />
     </main>
   )
 }

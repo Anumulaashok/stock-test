@@ -27,16 +27,19 @@ from app.forecasting.calculations import (
     calculate_sma,
     classify_moving_average_crossover,
     fit_linear_trend,
-    project_calendar_date,
     project_metric,
+    project_trading_date,
 )
 from app.models.financial_results import FinancialAnalysisResult, MetricStatus
 from app.models.financial_statements import CompanyFinancials
 from app.models.forecasting import (
     FinancialForecast,
+    ForecastHorizon,
     ForecastResult,
+    HorizonForecast,
     MovingAverageCrossover,
     MovingAverageResult,
+    MultiHorizonForecast,
     PriceTrendForecast,
     PriceTrendPoint,
     TechnicalForecast,
@@ -61,6 +64,27 @@ _INCOME_STATEMENT_METRICS = [
     ("eps", "USD"),
 ]
 
+# horizon -> (period count, trading days per period, human label).
+# WEEKLY's 5 trading-days-per-week is exact absent holidays. MONTHLY's 21
+# is the standard approximation (252 trading days/year / 12) -- there is
+# no calendar-exact "trading days in a specific future month" without a
+# holiday calendar this app doesn't have (see `project_trading_date`).
+_HORIZON_SPECS: dict[ForecastHorizon, tuple[int, int, str]] = {
+    ForecastHorizon.DAILY: (30, 1, "30 Trading Days"),
+    ForecastHorizon.WEEKLY: (12, 5, "12 Weeks"),
+    ForecastHorizon.MONTHLY: (12, 21, "12 Months"),
+}
+
+# Momentum-based methods (rate-of-change, SMA-crossover drift) measure a
+# short window (ROC_WINDOW days, or the 50/200-day SMA spread) and apply
+# it as a constant drift assumption. That's honest at the daily horizon
+# it was designed for; stated without qualification at 12 weeks/months
+# out it reads more confident than the underlying measurement supports.
+_MOMENTUM_HORIZON_CAUTION = (
+    " This measures a short-term pace and is applied unchanged across a much "
+    "longer horizon -- treat it with more caution than the daily projection."
+)
+
 
 class ForecastingService:
     def forecast(
@@ -83,6 +107,7 @@ class ForecastingService:
             else None
         )
         resolved_ticker = ticker or company_financials.ticker or company_financials.company_name
+        current_price = valuation_input.current_share_price if valuation_input else None
         price_trend_forecast = self.forecast_price_trend(
             resolved_ticker,
             recent_prices or [],
@@ -91,15 +116,28 @@ class ForecastingService:
         technical_forecast = self.forecast_technical(
             resolved_ticker,
             recent_prices or [],
-            current_price=valuation_input.current_share_price if valuation_input else None,
+            current_price=current_price,
             projection_days=projection_days,
         )
+        horizons = self._build_multi_horizon_forecast(
+            resolved_ticker, recent_prices or [], current_price, price_trend_forecast, technical_forecast
+        )
+        historical_prices = sorted(
+            (p for p in (recent_prices or []) if p.close is not None),
+            key=lambda p: p.timestamp,
+        )
 
+        # sma_50/sma_200-unavailability warnings depend only on price
+        # history depth, not horizon -- daily/weekly/monthly would
+        # otherwise repeat the identical string three times.
+        technical_warnings = (
+            technical_forecast.warnings + horizons.weekly.technical.warnings + horizons.monthly.technical.warnings
+        )
         warnings: list[str] = []
         warnings.extend(financial_forecast.warnings)
         if valuation_forecast:
             warnings.extend(valuation_forecast.warnings)
-        warnings.extend(technical_forecast.warnings)
+        warnings.extend(dict.fromkeys(technical_warnings))
 
         return ForecastResult(
             company=company_financials.company_name,
@@ -107,6 +145,8 @@ class ForecastingService:
             valuation_forecast=valuation_forecast,
             price_trend_forecast=price_trend_forecast,
             technical_forecast=technical_forecast,
+            horizons=horizons,
+            historical_prices=historical_prices,
             warnings=warnings,
         )
 
@@ -261,7 +301,16 @@ class ForecastingService:
         ticker: str,
         recent_prices: list[HistoricalPricePoint],
         projection_days: int,
+        *,
+        horizon: ForecastHorizon = ForecastHorizon.DAILY,
+        period_offsets: list[tuple[int, int]] | None = None,
     ) -> PriceTrendForecast:
+        """`period_offsets` is an optional list of `(period_number,
+        trading_day_offset)` pairs the fitted line is evaluated at.
+        Defaults to one point per trading day, `1..projection_days` (the
+        original daily behavior). Weekly/monthly horizons reuse the exact
+        same OLS fit computed below and only change which offsets it's
+        evaluated at -- see `_build_multi_horizon_forecast`."""
         usable = sorted(
             (p for p in recent_prices if p.close is not None),
             key=lambda p: p.timestamp,
@@ -272,6 +321,7 @@ class ForecastingService:
         if status is not MetricStatus.CALCULATED:
             return PriceTrendForecast(
                 ticker=ticker,
+                horizon=horizon,
                 based_on_points=len(closes),
                 projection_days=projection_days,
                 status=status,
@@ -280,20 +330,23 @@ class ForecastingService:
 
         last_index = Decimal(len(closes) - 1)
         anchor_date = usable[-1].timestamp if usable else None
+        offsets = period_offsets or [(day, day) for day in range(1, projection_days + 1)]
         points = [
             PriceTrendPoint(
-                day_offset=day,
-                date=project_calendar_date(anchor_date, day),
+                period=period,
+                day_offset=trading_days,
+                date=project_trading_date(anchor_date, trading_days),
                 # A share price cannot go negative; a steep downtrend
                 # extrapolated far enough is floored at zero rather than
                 # emitting an economically meaningless negative value.
-                projected_price=max(Decimal(0), intercept + slope * (last_index + day)),
+                projected_price=max(Decimal(0), intercept + slope * (last_index + trading_days)),
             )
-            for day in range(1, projection_days + 1)
+            for period, trading_days in offsets
         ]
 
         return PriceTrendForecast(
             ticker=ticker,
+            horizon=horizon,
             based_on_points=len(closes),
             slope_per_day=slope,
             r_squared=r_squared,
@@ -310,12 +363,22 @@ class ForecastingService:
         recent_prices: list[HistoricalPricePoint],
         current_price: Decimal | None,
         projection_days: int,
+        *,
+        horizon: ForecastHorizon = ForecastHorizon.DAILY,
+        horizon_period: int | None = None,
     ) -> TechnicalForecast:
         """Moving averages, crossover signal, and momentum-based
         projections -- each an independently-labeled technique so
         results can be tracked and compared against actual outcomes
         over time, exactly like `forecast_valuation`'s bear/base/bull
-        scenarios are never blended into one number."""
+        scenarios are never blended into one number.
+
+        `horizon_period` is the horizon's own period count this
+        single-value projection targets (e.g. 12 for weekly/monthly);
+        it defaults to `projection_days` so the original daily call
+        (period == trading days) is unchanged."""
+        resolved_horizon_period = horizon_period if horizon_period is not None else projection_days
+        momentum_caution = "" if horizon is ForecastHorizon.DAILY else _MOMENTUM_HORIZON_CAUTION
         usable = sorted(
             (p for p in recent_prices if p.close is not None),
             key=lambda p: p.timestamp,
@@ -326,7 +389,7 @@ class ForecastingService:
         # market-data resolution step).
         resolved_current_price = current_price if current_price is not None else (closes[-1] if closes else None)
         anchor_date = usable[-1].timestamp if usable else None
-        target_date = project_calendar_date(anchor_date, projection_days)
+        target_date = project_trading_date(anchor_date, projection_days)
 
         warnings: list[str] = []
 
@@ -364,6 +427,8 @@ class ForecastingService:
                 sma_50_reason,
                 projection_days,
                 target_date,
+                horizon,
+                resolved_horizon_period,
             )
         )
         methods.append(
@@ -376,6 +441,8 @@ class ForecastingService:
                 sma_200_reason,
                 projection_days,
                 target_date,
+                horizon,
+                resolved_horizon_period,
             )
         )
 
@@ -392,6 +459,8 @@ class ForecastingService:
                 "extrapolated forward by the projection horizon.",
                 projected_price=linear_value,
                 projection_days=projection_days,
+                horizon=horizon,
+                horizon_period=resolved_horizon_period,
                 projected_date=target_date,
                 status=linear_status,
                 reason=linear_reason,
@@ -411,9 +480,11 @@ class ForecastingService:
                     method="sma_crossover_momentum",
                     description="Applies the percentage spread between the 50-day and 200-day moving "
                     "averages to the current price as a momentum drift (golden cross -> upward "
-                    "drift, death cross -> downward drift).",
+                    "drift, death cross -> downward drift)." + momentum_caution,
                     projected_price=max(Decimal(0), crossover_projected),
                     projection_days=projection_days,
+                    horizon=horizon,
+                    horizon_period=resolved_horizon_period,
                     projected_date=target_date,
                     status=MetricStatus.CALCULATED,
                 )
@@ -429,9 +500,11 @@ class ForecastingService:
                     method="sma_crossover_momentum",
                     description="Applies the percentage spread between the 50-day and 200-day moving "
                     "averages to the current price as a momentum drift (golden cross -> upward "
-                    "drift, death cross -> downward drift).",
+                    "drift, death cross -> downward drift)." + momentum_caution,
                     projected_price=None,
                     projection_days=projection_days,
+                    horizon=horizon,
+                    horizon_period=resolved_horizon_period,
                     projected_date=target_date,
                     status=MetricStatus.UNAVAILABLE,
                     reason=reason,
@@ -445,9 +518,11 @@ class ForecastingService:
                 TechnicalForecastMethod(
                     method="rate_of_change_momentum",
                     description=f"Applies the {ROC_WINDOW}-day rate-of-change (momentum) to the "
-                    "current price, assuming the recent trend continues at the same pace.",
+                    "current price, assuming the recent trend continues at the same pace." + momentum_caution,
                     projected_price=max(Decimal(0), roc_projected),
                     projection_days=projection_days,
+                    horizon=horizon,
+                    horizon_period=resolved_horizon_period,
                     projected_date=target_date,
                     status=MetricStatus.CALCULATED,
                 )
@@ -457,9 +532,11 @@ class ForecastingService:
                 TechnicalForecastMethod(
                     method="rate_of_change_momentum",
                     description=f"Applies the {ROC_WINDOW}-day rate-of-change (momentum) to the "
-                    "current price, assuming the recent trend continues at the same pace.",
+                    "current price, assuming the recent trend continues at the same pace." + momentum_caution,
                     projected_price=None,
                     projection_days=projection_days,
+                    horizon=horizon,
+                    horizon_period=resolved_horizon_period,
                     projected_date=target_date,
                     status=roc_status if roc_status is not MetricStatus.CALCULATED else MetricStatus.UNAVAILABLE,
                     reason=roc_reason or "current price is unavailable",
@@ -468,6 +545,7 @@ class ForecastingService:
 
         return TechnicalForecast(
             ticker=ticker,
+            horizon=horizon,
             based_on_points=len(closes),
             current_price=resolved_current_price,
             projection_days=projection_days,
@@ -479,14 +557,60 @@ class ForecastingService:
 
     @staticmethod
     def _sma_level_method(
-        method, description, value, status, reason, projection_days, projected_date
+        method, description, value, status, reason, projection_days, projected_date, horizon, horizon_period
     ) -> TechnicalForecastMethod:
         return TechnicalForecastMethod(
             method=method,
             description=description,
             projected_price=value if status is MetricStatus.CALCULATED else None,
             projection_days=projection_days,
+            horizon=horizon,
+            horizon_period=horizon_period,
             projected_date=projected_date,
             status=status,
             reason=None if status is MetricStatus.CALCULATED else reason,
+        )
+
+    # --- Multi-horizon forecasting -------------------------------------------------------
+
+    def _build_multi_horizon_forecast(
+        self,
+        ticker: str,
+        recent_prices: list[HistoricalPricePoint],
+        current_price: Decimal | None,
+        daily_price_trend: PriceTrendForecast,
+        daily_technical: TechnicalForecast,
+    ) -> MultiHorizonForecast:
+        """Weekly and monthly reuse the exact same OLS trend fit
+        (`forecast_price_trend`) and technical-indicator formulas
+        (`forecast_technical`) the daily horizon already used above --
+        only the trading-day offsets they're evaluated at change.
+        Nothing here is a new calculation, and the daily entries are the
+        SAME objects already computed by `forecast()`, not recomputed."""
+        daily_periods, _daily_step, daily_label = _HORIZON_SPECS[ForecastHorizon.DAILY]
+        horizons: dict[ForecastHorizon, HorizonForecast] = {
+            ForecastHorizon.DAILY: HorizonForecast(
+                horizon=ForecastHorizon.DAILY,
+                label=daily_label,
+                price_trend=daily_price_trend,
+                technical=daily_technical,
+            )
+        }
+        for horizon in (ForecastHorizon.WEEKLY, ForecastHorizon.MONTHLY):
+            periods, trading_days_per_period, label = _HORIZON_SPECS[horizon]
+            terminal_trading_days = periods * trading_days_per_period
+            offsets = [(period, period * trading_days_per_period) for period in range(1, periods + 1)]
+            price_trend = self.forecast_price_trend(
+                ticker, recent_prices, terminal_trading_days, horizon=horizon, period_offsets=offsets
+            )
+            technical = self.forecast_technical(
+                ticker, recent_prices, current_price, terminal_trading_days,
+                horizon=horizon, horizon_period=periods,
+            )
+            horizons[horizon] = HorizonForecast(horizon=horizon, label=label, price_trend=price_trend, technical=technical)
+
+        return MultiHorizonForecast(
+            daily=horizons[ForecastHorizon.DAILY],
+            weekly=horizons[ForecastHorizon.WEEKLY],
+            monthly=horizons[ForecastHorizon.MONTHLY],
         )

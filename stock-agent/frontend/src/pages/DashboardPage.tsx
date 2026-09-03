@@ -11,6 +11,8 @@ import { ApiError } from '../api/client'
 import { toDisplayNumber } from '../lib/format'
 import type { PortfolioSummary, WatchlistItem } from '../types/backend'
 import { SearchBar } from '../components/SearchBar'
+import { SectorOverview } from '../components/SectorOverview'
+import { StickyAskAssistant } from '../components/StickyAskAssistant'
 
 interface DashboardPageProps {
   /** Reuses the existing analysis flow -- searching from the dashboard
@@ -33,6 +35,8 @@ export function DashboardPage({ onAnalyze }: DashboardPageProps) {
   const [watchlist, setWatchlist] = useState<WatchlistItem[]>([])
   const [loadError, setLoadError] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
+  const [askTicker, setAskTicker] = useState('')
+  const [askTickerInput, setAskTickerInput] = useState('')
 
   async function refresh() {
     try {
@@ -51,6 +55,11 @@ export function DashboardPage({ onAnalyze }: DashboardPageProps) {
     refresh()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
+
+  useEffect(() => {
+    if (!askTicker && watchlist.length > 0) setAskTicker(watchlist[0].ticker)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [watchlist])
 
   async function handleAddHolding(ticker: string, quantity: string, averageCost: string) {
     await addHolding(ticker, quantity, averageCost)
@@ -73,7 +82,7 @@ export function DashboardPage({ onAnalyze }: DashboardPageProps) {
   }
 
   return (
-    <main className="mx-auto flex max-w-5xl flex-col gap-8 px-4 py-8">
+    <main className="mx-auto flex max-w-5xl flex-col gap-8 px-4 pb-32 pt-8 sm:pb-36">
       <div>
         <h1 className="text-xl font-semibold">Dashboard</h1>
         <p className="text-sm text-[var(--color-text-faint)]">Your portfolio, watchlist, and research search.</p>
@@ -83,6 +92,40 @@ export function DashboardPage({ onAnalyze }: DashboardPageProps) {
 
       {loading && <p className="text-sm text-[var(--color-text-faint)]">Loading…</p>}
       {loadError && <p className="text-sm text-[var(--color-status-negative)]">{loadError}</p>}
+
+      <SectorOverview onSelectTicker={(ticker) => setAskTicker(ticker)} />
+
+      <section className="flex flex-col gap-2">
+        <div>
+          <h2 className="text-lg font-semibold">Ask Stock Agent</h2>
+          <p className="text-sm text-[var(--color-text-faint)]">
+            Pick a ticker (or click one above / in your watchlist), then use the floating assistant in the corner.
+          </p>
+        </div>
+        <form
+          className="flex items-center gap-2"
+          onSubmit={(e) => {
+            e.preventDefault()
+            if (askTickerInput.trim()) setAskTicker(askTickerInput.trim().toUpperCase())
+          }}
+        >
+          <label htmlFor="ask-ticker" className="sr-only">
+            Ticker to ask about
+          </label>
+          <input
+            id="ask-ticker"
+            type="text"
+            value={askTickerInput}
+            onChange={(e) => setAskTickerInput(e.target.value)}
+            placeholder={askTicker || 'e.g. RELIANCE'}
+            className="input-field w-40 px-3 py-2 text-sm"
+          />
+          <button type="submit" className="btn-secondary px-4 py-2 text-sm">
+            Set ticker
+          </button>
+          {askTicker && <span className="text-xs text-[var(--color-text-faint)]">Currently asking about {askTicker}</span>}
+        </form>
+      </section>
 
       {summary && (
         <section className="flex flex-col gap-4">
@@ -121,6 +164,8 @@ export function DashboardPage({ onAnalyze }: DashboardPageProps) {
         <WatchlistTable items={watchlist} onRemove={handleRemoveWatchlistItem} onAnalyze={onAnalyze} />
         <AddWatchlistForm onAdd={handleAddWatchlistItem} />
       </section>
+
+      <StickyAskAssistant ticker={askTicker || null} />
     </main>
   )
 }

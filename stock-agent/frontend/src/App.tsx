@@ -3,11 +3,13 @@ import { AnalysisPage } from './pages/AnalysisPage'
 import { LoginPage } from './pages/LoginPage'
 import { SignupPage } from './pages/SignupPage'
 import { DashboardPage } from './pages/DashboardPage'
+import { IntelligencePage } from './pages/IntelligencePage'
 import { useAuth } from './auth/AuthContext'
 
 type View =
   | { kind: 'analysis'; ticker?: string }
   | { kind: 'dashboard' }
+  | { kind: 'intelligence' }
   | { kind: 'login' }
   | { kind: 'signup' }
 
@@ -90,8 +92,28 @@ export default function App() {
   function goToSection(headingId: string) {
     setView({ kind: 'analysis' })
     window.setTimeout(() => {
-      document.getElementById(headingId)?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+      const el = document.getElementById(headingId)
+      // The sticky "Ask Stock Agent" assistant is fixed on screen rather
+      // than a scrollable section -- open it instead of scrolling to it.
+      if (headingId === 'ask-assistant-heading') {
+        if (el?.getAttribute('aria-expanded') === 'false') (el as HTMLButtonElement).click()
+        return
+      }
+      el?.scrollIntoView({ behavior: 'smooth', block: 'start' })
     }, SCROLL_TO_SECTION_DELAY_MS)
+  }
+
+  // The Intelligence page supplies its own full-bleed sidebar/topbar (and
+  // its own dark theme) -- the outer app header would double up on nav
+  // and clash with that theme, so it's hidden for that view only.
+  if (view.kind === 'intelligence' && status === 'authenticated') {
+    return (
+      <IntelligencePage
+        onAnalyze={(ticker) => setView({ kind: 'analysis', ticker })}
+        onGoToDashboard={() => setView({ kind: 'dashboard' })}
+        onExit={() => setView({ kind: 'analysis' })}
+      />
+    )
   }
 
   return (
@@ -111,6 +133,11 @@ export default function App() {
               </span>
             </div>
             <nav className="flex min-w-0 flex-1 items-center gap-4 overflow-x-auto sm:gap-6">
+              {status === 'authenticated' && (
+                <NavLink active={view.kind === 'intelligence'} onClick={() => setView({ kind: 'intelligence' })}>
+                  Intelligence
+                </NavLink>
+              )}
               <NavLink active={view.kind === 'analysis'} onClick={() => setView({ kind: 'analysis' })}>
                 Research
               </NavLink>

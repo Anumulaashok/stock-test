@@ -1,3 +1,4 @@
+from datetime import date, timedelta
 from decimal import Decimal
 
 from app.financial.service import FinancialAnalysisService
@@ -9,6 +10,7 @@ from app.models.financial_statements import (
     IncomeStatement,
 )
 from app.models.financial_results import MetricStatus
+from app.models.forecasting import ForecastHorizon
 from app.models.market import HistoricalPricePoint
 from app.models.valuation import ValuationInput
 
@@ -164,8 +166,11 @@ def test_forecast_price_trend_extrapolates_a_rising_line():
     assert forecast.disclaimer  # always attached
     assert [p.day_offset for p in forecast.points] == [1, 2, 3]
     assert forecast.points[0].projected_price > d(100 + 6 * 2)
-    # anchor is the latest observed price's date (2026-01-07)
-    assert [p.date for p in forecast.points] == ["2026-01-08", "2026-01-09", "2026-01-10"]
+    # anchor is the latest observed price's date (2026-01-07, a Wednesday).
+    # Trading-day-aware: +1 -> Thu 01-08, +2 -> Fri 01-09, +3 skips the
+    # Sat 01-10/Sun 01-11 weekend and lands on Mon 01-12.
+    assert [p.date for p in forecast.points] == ["2026-01-08", "2026-01-09", "2026-01-12"]
+    assert [p.period for p in forecast.points] == [1, 2, 3]
 
 
 def test_forecast_price_trend_insufficient_points_is_unavailable():
@@ -247,8 +252,13 @@ def test_forecast_technical_computes_moving_averages_and_crossover():
         "rate_of_change_momentum",
     }
     assert all(m.status is MetricStatus.CALCULATED for m in forecast.methods)
-    expected_date = (base + timedelta(days=209 + 5)).isoformat()
-    assert all(m.projected_date == expected_date for m in forecast.methods)
+    # anchor is day 209 = 2026-01-01 + 209 days = 2026-07-29 (a Wednesday);
+    # +5 trading days lands on 2026-08-05 (Wed -> Thu, Fri, Mon, Tue, Wed),
+    # hand-computed independently of the projector under test.
+    assert base + timedelta(days=209) == date(2026, 7, 29)
+    assert all(m.projected_date == "2026-08-05" for m in forecast.methods)
+    assert all(m.horizon == "daily" for m in forecast.methods)
+    assert all(m.horizon_period == 5 for m in forecast.methods)
 
 
 def test_forecast_technical_insufficient_history_marks_sma_unavailable():
@@ -275,3 +285,111 @@ def test_forecast_technical_no_data_is_unavailable_everywhere():
     assert forecast.current_price is None
     assert all(ma.status is MetricStatus.UNAVAILABLE for ma in forecast.moving_averages)
     assert all(m.status is not MetricStatus.CALCULATED for m in forecast.methods)
+
+
+# --- multi-horizon forecasting (daily/weekly/monthly) ---------------------------------------
+
+
+def _rising_prices(n: int, base: date | None = None) -> list[HistoricalPricePoint]:
+    anchor = base or date(2026, 1, 1)
+    return [price_point((anchor + timedelta(days=i)).isoformat(), d(100 + i)) for i in range(n)]
+
+
+def _forecast_with_prices(recent_prices, current_price=d(400)):
+    company_financials = _company_financials()
+    financial_analysis = _financial_analysis(company_financials)
+    valuation_input = ValuationInput(
+        company_name="Acme Corp", current_share_price=current_price, free_cash_flow=d(100)
+    )
+    return ForecastingService().forecast(
+        company_financials=company_financials,
+        financial_analysis=financial_analysis,
+        valuation_input=valuation_input,
+        recent_prices=recent_prices,
+        ticker="ACME",
+    )
+
+
+def test_forecast_horizons_daily_is_the_same_object_as_the_legacy_fields():
+    result = _forecast_with_prices(_rising_prices(210))
+
+    assert result.horizons is not None
+    assert result.horizons.daily.horizon is ForecastHorizon.DAILY
+    assert result.horizons.daily.label == "30 Trading Days"
+    assert result.horizons.daily.price_trend is result.price_trend_forecast
+    assert result.horizons.daily.technical is result.technical_forecast
+
+
+def test_forecast_horizons_weekly_has_twelve_points_at_five_trading_day_steps():
+    result = _forecast_with_prices(_rising_prices(210))
+
+    weekly = result.horizons.weekly
+    assert weekly.horizon is ForecastHorizon.WEEKLY
+    assert weekly.label == "12 Weeks"
+    assert weekly.price_trend.status is MetricStatus.CALCULATED
+    assert [p.period for p in weekly.price_trend.points] == list(range(1, 13))
+    assert [p.day_offset for p in weekly.price_trend.points] == [w * 5 for w in range(1, 13)]
+    # A rising fitted line must project higher the further out it's evaluated.
+    assert weekly.price_trend.points[-1].projected_price > weekly.price_trend.points[0].projected_price
+    assert all(m.horizon is ForecastHorizon.WEEKLY for m in weekly.technical.methods)
+    assert all(m.horizon_period == 12 for m in weekly.technical.methods)
+
+
+def test_forecast_horizons_monthly_has_twelve_points_at_twentyone_trading_day_steps():
+    result = _forecast_with_prices(_rising_prices(300))
+
+    monthly = result.horizons.monthly
+    assert monthly.horizon is ForecastHorizon.MONTHLY
+    assert monthly.label == "12 Months"
+    assert monthly.price_trend.status is MetricStatus.CALCULATED
+    assert [p.period for p in monthly.price_trend.points] == list(range(1, 13))
+    assert [p.day_offset for p in monthly.price_trend.points] == [m * 21 for m in range(1, 13)]
+    assert monthly.price_trend.points[-1].projected_price > monthly.price_trend.points[0].projected_price
+    assert all(m.horizon is ForecastHorizon.MONTHLY for m in monthly.technical.methods)
+    assert all(m.horizon_period == 12 for m in monthly.technical.methods)
+
+
+def test_forecast_horizons_insufficient_history_is_unavailable_at_every_horizon():
+    result = _forecast_with_prices([price_point("2026-01-01", d(100))], current_price=None)
+
+    for horizon_forecast in (result.horizons.daily, result.horizons.weekly, result.horizons.monthly):
+        assert horizon_forecast.price_trend.status is MetricStatus.UNAVAILABLE
+        assert horizon_forecast.price_trend.points == []
+        sma_200 = next(ma for ma in horizon_forecast.technical.moving_averages if ma.window == 200)
+        assert sma_200.status is MetricStatus.UNAVAILABLE
+        assert sma_200.reason is not None
+
+
+def test_forecast_horizons_sma200_unavailable_reason_is_not_duplicated_across_horizons():
+    # 60 rising closes: enough for SMA-50, not enough for SMA-200 -- the
+    # identical "insufficient history" reason would otherwise appear once
+    # per horizon (daily/weekly/monthly) in the combined warnings list.
+    result = _forecast_with_prices(_rising_prices(60), current_price=d(150))
+
+    sma_200_warnings = [w for w in result.warnings if "200-day moving average unavailable" in w]
+    assert len(sma_200_warnings) == 1
+
+
+def test_forecast_historical_prices_echoes_sorted_non_null_closes():
+    recent_prices = [
+        price_point("2026-01-03", d(102)),
+        price_point("2026-01-01", d(100)),
+        price_point("2026-01-02", None),
+    ]
+
+    result = _forecast_with_prices(recent_prices)
+
+    assert [p.timestamp for p in result.historical_prices] == ["2026-01-01", "2026-01-03"]
+    assert all(p.close is not None for p in result.historical_prices)
+
+
+def test_forecast_horizons_absent_when_no_forecasting_service_called_directly_still_populates():
+    # Even with zero price history, `horizons` is always present (each
+    # horizon just reports UNAVAILABLE), never omitted -- callers should
+    # never need an `if forecast.horizons` null-check for a normal run.
+    result = _forecast_with_prices([])
+
+    assert result.horizons is not None
+    assert result.horizons.daily.price_trend.status is MetricStatus.UNAVAILABLE
+    assert result.horizons.weekly.price_trend.status is MetricStatus.UNAVAILABLE
+    assert result.horizons.monthly.price_trend.status is MetricStatus.UNAVAILABLE

@@ -6,6 +6,21 @@ export function buildReport(overrides: Partial<InvestmentResearchReport> = {}): 
   return {
     company: { name: 'Acme Corp', ticker: 'ACME', currency: null },
     status: 'calculated',
+    market: {
+      source: 'yfinance',
+      current_price: '100',
+      previous_close: '97.65',
+      change: '2.35',
+      change_percent: '2.41',
+      currency: 'INR',
+      market_status: 'open',
+      market_timestamp: '2026-03-01T10:00:00+00:00',
+      freshness: 'live',
+      market_cap: '500000000000',
+      year_high: '120',
+      year_low: '80',
+      formatted_current_price: '₹100.00',
+    },
     summary: {
       overall_score: '78',
       overall_status: 'calculated',
@@ -80,6 +95,8 @@ export function buildReport(overrides: Partial<InvestmentResearchReport> = {}): 
       technical_signal: null,
       current_price: null,
       formatted_current_price: null,
+      horizons: null,
+      historical_prices: [],
     },
     research: {
       source: 'research',

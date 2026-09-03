@@ -25,10 +25,10 @@ work with without every caller needing to supply them.
 import logging
 from decimal import Decimal
 
-from app.data.models import CompanyIdentifier
+from app.data.models import CompanyIdentifier, FinancialDataFetchResult
 from app.data.service import FinancialDataFetcher
 from app.market.service import MarketDataFetcher
-from app.models.market import HistoricalPricePoint, MarketSnapshot, PriceFreshness
+from app.models.market import HistoricalPricePoint, MarketQuote, MarketSnapshot, PriceFreshness
 from app.pipeline.models import (
     AnalysisRequest,
     CombinedAnalysisResult,
@@ -62,11 +62,20 @@ class AnalysisApplicationService:
         self._market_data_service = market_data_service
 
     async def analyze_by_ticker(
-        self, request: TickerAnalysisRequest, run_analyst: bool = True
+        self,
+        request: TickerAnalysisRequest,
+        run_analyst: bool = True,
+        financial_fetch_result: FinancialDataFetchResult | None = None,
     ) -> CombinedAnalysisResult:
+        """`financial_fetch_result`, when supplied, is used as-is instead
+        of fetching again — lets a caller that already fetched financials
+        for this same request (e.g. `ResearchSnapshotService`'s raw-data
+        capture) avoid a second provider round-trip. Defaults to `None`
+        so every existing caller (`POST /api/v1/analyze/ticker`, ad-hoc
+        callers) is unaffected and still fetches on its own."""
         company = PipelineCompanyInfo(name=request.ticker, ticker=request.ticker)
 
-        fetch_result = await self._financial_data_service.get_company_financials(
+        fetch_result = financial_fetch_result or await self._financial_data_service.get_company_financials(
             CompanyIdentifier(ticker=request.ticker)
         )
 
@@ -81,7 +90,7 @@ class AnalysisApplicationService:
             )
 
         data = fetch_result.data
-        current_share_price, recent_prices, market_warning = await self._resolve_market_data(request)
+        current_share_price, recent_prices, market_warning, market_quote = await self._resolve_market_data(request)
 
         analysis_request = AnalysisRequest(
             company_name=data.company_financials.company_name,
@@ -98,11 +107,11 @@ class AnalysisApplicationService:
         warnings = data.warnings + result.warnings
         if market_warning:
             warnings = warnings + [market_warning]
-        return result.model_copy(update={"warnings": warnings})
+        return result.model_copy(update={"warnings": warnings, "market_quote": market_quote})
 
     async def _resolve_market_data(
         self, request: TickerAnalysisRequest
-    ) -> tuple[Decimal | None, list[HistoricalPricePoint], str | None]:
+    ) -> tuple[Decimal | None, list[HistoricalPricePoint], str | None, MarketQuote | None]:
         """An explicit `current_share_price` / `recent_prices` on the
         request always wins — this preserves the existing override
         behavior callers already rely on. Otherwise, if a
@@ -112,6 +121,11 @@ class AnalysisApplicationService:
         quote is LIVE or DELAYED; recent prices are supplementary and
         used regardless of quote freshness — the forecasting stage's
         trend fit treats a short/empty history as unavailable itself.
+
+        The raw `MarketQuote` (previous_close/change/market_cap/etc,
+        beyond just `current_price`) is also returned so the caller can
+        attach it to `CombinedAnalysisResult` for the report layer —
+        previously these fields were fetched and then discarded here.
 
         Never raises: a market-data failure (provider down, rate limited,
         auth failure, or anything unexpected including a network-layer
@@ -124,9 +138,9 @@ class AnalysisApplicationService:
         want_recent_prices = not request.recent_prices and request.include_price_trend_forecast
 
         if not want_price and not want_recent_prices:
-            return request.current_share_price, request.recent_prices, None
+            return request.current_share_price, request.recent_prices, None, None
         if self._market_data_service is None:
-            return request.current_share_price, request.recent_prices, None
+            return request.current_share_price, request.recent_prices, None, None
 
         unavailable_message = (
             "Current market price is unavailable for {ticker}{detail}"
@@ -144,6 +158,7 @@ class AnalysisApplicationService:
                 request.current_share_price,
                 request.recent_prices,
                 unavailable_message.format(ticker=request.ticker, detail="."),
+                None,
             )
 
         if result.status != "success" or result.snapshot is None:
@@ -153,6 +168,7 @@ class AnalysisApplicationService:
                 request.current_share_price,
                 request.recent_prices,
                 unavailable_message.format(ticker=request.ticker, detail=f": {detail}"),
+                None,
             )
 
         snapshot: MarketSnapshot = result.snapshot
@@ -161,12 +177,12 @@ class AnalysisApplicationService:
         )
 
         if not want_price:
-            return request.current_share_price, recent_prices, None
+            return request.current_share_price, recent_prices, None, snapshot.quote
         if snapshot.quote is None or snapshot.quote.current_price is None:
-            return None, recent_prices, f"Current market price is unavailable for {request.ticker}."
+            return None, recent_prices, f"Current market price is unavailable for {request.ticker}.", snapshot.quote
         if snapshot.quote.freshness not in _USABLE_FRESHNESS:
             return None, recent_prices, (
                 f"Current market price for {request.ticker} is {snapshot.quote.freshness.value} "
                 "and was not used for valuation."
-            )
-        return snapshot.quote.current_price, recent_prices, None
+            ), snapshot.quote
+        return snapshot.quote.current_price, recent_prices, None, snapshot.quote

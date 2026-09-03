@@ -15,7 +15,7 @@ from app.models.analyst import AnalystResult
 from app.models.financial_results import FinancialAnalysisResult
 from app.models.financial_statements import CompanyFinancials
 from app.models.forecasting import ForecastResult
-from app.models.market import HistoricalPricePoint
+from app.models.market import HistoricalPricePoint, MarketQuote
 from app.models.report import InvestmentResearchReport
 from app.models.research import ResearchResult
 from app.models.scoring import ScoringResult
@@ -141,6 +141,7 @@ class CombinedAnalysisResult(BaseModel):
     forecast: ForecastResult | None = None
     research: ResearchResult | None = None
     analyst: AnalystResult | None = None
+    market_quote: MarketQuote | None = None
     report: InvestmentResearchReport | None = None
     warnings: list[str] = Field(default_factory=list)
     metadata: ExecutionMetadata | None = None

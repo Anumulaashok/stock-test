@@ -280,11 +280,11 @@ body {
   animation: fade-in-up 320ms var(--ease-out) both;
 }
 
-/* The dark "Intelligence" palette is now the app-wide default (see the
-   :root tokens at the top of this file) -- `.intel-theme` is kept only
-   as the Intelligence page's own slightly-stronger background glow,
-   layered on top of the same global tokens, not a separate theme. */
-.intel-theme {
+/* The dark "Intelligence" palette is the app-wide default (see the
+   :root tokens at the top of this file) -- `.app-shell-bg` is just the
+   background glow, layered on top of the same global tokens, applied
+   once on `AppShell`'s root rather than per-page. Not a separate theme. */
+.app-shell-bg {
   min-height: 100vh;
   background:
     radial-gradient(900px 480px at 8% -8%, color-mix(in srgb, var(--intel-violet) 14%, transparent), transparent 60%),

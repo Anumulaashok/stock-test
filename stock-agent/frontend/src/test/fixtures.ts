@@ -1,4 +1,4 @@
-import type { InvestmentResearchReport } from '../types/backend'
+import type { CombinedAnalysisResult, InvestmentResearchReport, ResearchRunResult } from '../types/backend'
 
 /** A representative report matching the backend's actual JSON shape
  * (Decimal fields as strings), used across component tests. */
@@ -134,6 +134,40 @@ export function buildReport(overrides: Partial<InvestmentResearchReport> = {}): 
       { source: 'valuation', code: null, message: 'target EV/EBITDA multiple is missing' },
     ],
     metadata: { report_version: '1.0', generated_at: '2026-03-01T00:00:00+00:00', pipeline_version: '1.0', duration_ms: 5000 },
+    ...overrides,
+  }
+}
+
+/** A `ResearchRunResult` wrapping `report` in a `CombinedAnalysisResult`
+ * envelope -- shared across `AnalysisPage.test.tsx` and the route-level
+ * tests, replacing the ad hoc `runResult` helper previously duplicated
+ * per test file. */
+export function buildRunResult(
+  report: InvestmentResearchReport,
+  overrides: Partial<ResearchRunResult> = {},
+): ResearchRunResult {
+  const result: CombinedAnalysisResult = {
+    company: { name: report.company.name, ticker: report.company.ticker },
+    status: report.status,
+    financial_analysis: null,
+    valuation: null,
+    scoring: null,
+    research: null,
+    analyst: null,
+    report,
+    warnings: [],
+    metadata: { pipeline_version: '1.0', started_at: '', completed_at: '', duration_ms: 1 },
+  }
+  return {
+    research_run_id: 'run-1',
+    ticker: report.company.ticker ?? 'ACME',
+    research_date: '2026-09-02',
+    run_type: 'NORMAL',
+    status: 'COMPLETED',
+    is_new_run: true,
+    started_at: '2026-09-02T10:00:00Z',
+    completed_at: '2026-09-02T10:00:05Z',
+    result,
     ...overrides,
   }
 }

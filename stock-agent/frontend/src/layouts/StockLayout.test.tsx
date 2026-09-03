@@ -6,6 +6,7 @@ import { renderRoute } from '../test/renderRoute'
 import { buildReport, buildRunResult } from '../test/fixtures'
 import * as researchApi from '../api/research'
 import * as portfolioApi from '../api/portfolio'
+import { ApiError } from '../api/client'
 
 /**
  * The load-bearing test for the redesign's single architectural
@@ -72,5 +73,19 @@ describe('StockLayout', () => {
 
     const fundamentalsLink = screen.getByRole('link', { name: 'Fundamentals' })
     expect(fundamentalsLink).toHaveAttribute('href', expect.stringContaining('run=run-42'))
+  })
+
+  it('shows a retry affordance, not a dead-end banner, on a 409 (research already running)', async () => {
+    vi.spyOn(researchApi, 'fetchLatestResearch').mockResolvedValue(null)
+    vi.spyOn(researchApi, 'runResearch').mockRejectedValue(
+      new ApiError('Research for ACME on 2026-09-04 is already in progress in another request.', 'client', 409),
+    )
+
+    renderRoute(routes, '/stock/ACME')
+    await waitFor(() => expect(screen.getByRole('button', { name: /run research/i })).toBeInTheDocument())
+    await userEvent.click(screen.getByRole('button', { name: /run research/i }))
+
+    await waitFor(() => expect(screen.getByText(/already running for ACME/i)).toBeInTheDocument())
+    expect(screen.getByRole('button', { name: /check again/i })).toBeInTheDocument()
   })
 })

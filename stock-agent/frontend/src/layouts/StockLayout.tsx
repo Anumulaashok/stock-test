@@ -47,6 +47,24 @@ function StockLayoutInner({ ticker }: { ticker: string }) {
   }
 
   if (state.status === 'error') {
+    // A 409 means another request is already researching this exact
+    // ticker+day (see `ResearchInProgressError` -- single-process
+    // DB-level single-flight, not a distributed lock). That request will
+    // finish shortly and its result becomes readable via a plain GET, so
+    // this gets its own retry affordance rather than a dead-end banner.
+    if (state.error.status === 409) {
+      return (
+        <main className="mx-auto flex max-w-5xl flex-col items-center gap-4 px-4 pb-32 pt-16 text-center sm:px-6 sm:pb-36">
+          <p className="font-medium text-[var(--color-text-muted)]">Research is already running for {ticker}</p>
+          <p className="support-text max-w-sm">
+            Another request started analyzing {ticker} moments ago. It should finish shortly -- check again in a bit.
+          </p>
+          <button type="button" onClick={() => void reload()} disabled={refreshing} className="btn-primary px-4 py-2">
+            {refreshing ? 'Checking…' : 'Check again'}
+          </button>
+        </main>
+      )
+    }
     return (
       <main className="mx-auto flex max-w-5xl flex-col gap-8 px-4 pb-32 pt-10 sm:px-6 sm:pb-36">
         <ErrorBanner error={state.error} />

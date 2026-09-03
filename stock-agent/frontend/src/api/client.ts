@@ -46,7 +46,7 @@ function buildHeaders(hasBody: boolean): Record<string, string> {
 }
 
 async function request<TResponse>(
-  method: 'GET' | 'POST' | 'PATCH' | 'DELETE',
+  method: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE',
   path: string,
   body?: unknown,
   timeoutMs: number = DEFAULT_TIMEOUT_MS,
@@ -104,4 +104,16 @@ export async function patchJson<TResponse>(
 
 export async function deleteRequest(path: string, timeoutMs: number = DEFAULT_TIMEOUT_MS): Promise<void> {
   await request<void>('DELETE', path, undefined, timeoutMs)
+}
+
+export async function putJson<TResponse>(
+  path: string,
+  body: unknown,
+  timeoutMs: number = DEFAULT_TIMEOUT_MS,
+): Promise<TResponse> {
+  return request<TResponse>('PUT', path, body, timeoutMs)
+}
+
+export async function deleteJson<TResponse>(path: string, timeoutMs: number = DEFAULT_TIMEOUT_MS): Promise<TResponse> {
+  return request<TResponse>('DELETE', path, undefined, timeoutMs)
 }

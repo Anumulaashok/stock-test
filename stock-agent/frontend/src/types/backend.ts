@@ -229,11 +229,21 @@ export interface ReportValuationScenario {
   formatted_value_per_share: string | null
 }
 
+export type ForecastHorizonKey = 'daily' | 'weekly' | 'monthly'
+
 export interface ReportPriceTrendPoint {
+  period: number
   day_offset: number
   date: string | null
   projected_price: string | null
   formatted_projected_price: string | null
+}
+
+/** An actual (already-observed) closing price -- never a projection. */
+export interface ReportHistoricalPricePoint {
+  date: string
+  close: string | null
+  formatted_close: string | null
 }
 
 export interface ReportMovingAverage {
@@ -257,6 +267,8 @@ export interface ReportTechnicalMethod {
   description: string
   projected_price: string | null
   projection_days: number
+  horizon: ForecastHorizonKey
+  horizon_period: number
   projected_date: string | null
   status: MetricStatus
   reason: string | null
@@ -267,6 +279,28 @@ export interface ReportTechnicalSignal {
   label: TechnicalSignalLabel
   color: SignalColor
   reason: string
+}
+
+/** One forecast horizon's (daily/weekly/monthly) price-trend line and
+ * technical-method projections. `price_trend` is a genuine per-period
+ * series; `technical_methods` stay single values at the horizon's
+ * terminal period (see the backend's `HorizonForecast` docstring). */
+export interface ReportHorizonForecast {
+  horizon: ForecastHorizonKey
+  label: string
+  price_trend: ReportPriceTrendPoint[]
+  price_trend_status: MetricStatus | null
+  price_trend_reason: string | null
+  moving_averages: ReportMovingAverage[]
+  crossover: ReportMovingAverageCrossover | null
+  technical_methods: ReportTechnicalMethod[]
+  technical_signal: ReportTechnicalSignal | null
+}
+
+export interface ReportMultiHorizonForecast {
+  daily: ReportHorizonForecast
+  weekly: ReportHorizonForecast
+  monthly: ReportHorizonForecast
 }
 
 export interface ReportForecastSection {
@@ -286,6 +320,8 @@ export interface ReportForecastSection {
   technical_signal: ReportTechnicalSignal | null
   current_price: string | null
   formatted_current_price: string | null
+  horizons: ReportMultiHorizonForecast | null
+  historical_prices: ReportHistoricalPricePoint[]
 }
 
 export interface InvestmentResearchReport {
@@ -359,6 +395,40 @@ export interface CombinedAnalysisResult {
   metadata: ExecutionMetadata | null
 }
 
+// --- Research snapshots (POST /api/v1/research/ticker, GET .../history) -------------
+
+export type ResearchRunStatusKey = 'PENDING' | 'RUNNING' | 'COMPLETED' | 'FAILED' | 'PARTIAL'
+export type ResearchRunTypeKey = 'NORMAL' | 'FORCE_REFRESH'
+
+/** One row of research history -- enough to render a history list
+ * without loading the full saved report. */
+export interface ResearchRunSummary {
+  id: string
+  ticker: string
+  research_date: string
+  run_type: ResearchRunTypeKey
+  status: ResearchRunStatusKey
+  started_at: string
+  completed_at: string | null
+  error_message: string | null
+}
+
+/** What `POST /api/v1/research/ticker` and the read-only history routes
+ * return -- the same `CombinedAnalysisResult` shape (`result`) the app
+ * already renders, plus snapshot metadata for "Research snapshot ·
+ * Sep 2, 2026" and whether this call did new work or replayed one. */
+export interface ResearchRunResult {
+  research_run_id: string
+  ticker: string
+  research_date: string
+  run_type: ResearchRunTypeKey
+  status: ResearchRunStatusKey
+  is_new_run: boolean
+  started_at: string
+  completed_at: string | null
+  result: CombinedAnalysisResult
+}
+
 // --- Request contract ---------------------------------------------------------------
 
 export interface TickerAnalysisRequest {
@@ -391,6 +461,39 @@ export interface QAResult {
 export interface QATickerRequest {
   ticker: string
   question: string
+}
+
+// --- Market Opportunity / sector ranking ---------------------------------------------
+// Mirrors app/models/sectors.py. `sector_score` is the average of the sector's
+// constituent tickers' ScoringResult.overall_score -- never LLM-computed.
+
+export interface SectorStockSummary {
+  ticker: string
+  company_name: string
+  overall_score: string | null
+  band: string | null
+  status: 'calculated' | 'unavailable'
+}
+
+export interface SectorSummary {
+  sector: string
+  sector_score: string | null
+  outlook: 'bullish' | 'neutral' | 'bearish'
+  risk: 'low' | 'medium' | 'high'
+  growth_score: string | null
+  valuation_score: string | null
+  momentum_score: string | null
+  news_headline_count: number
+  constituents_evaluated: number
+  constituents_total: number
+  top_stocks: SectorStockSummary[]
+}
+
+export interface MarketOpportunityResult {
+  status: 'success' | 'partial' | 'unavailable'
+  generated_at: string
+  sectors: SectorSummary[]
+  warnings: string[]
 }
 
 // --- Auth / portfolio (Step 11) -----------------------------------------------------
@@ -441,4 +544,144 @@ export interface PortfolioSummary {
 export interface WatchlistItem {
   ticker: string
   created_at: string
+}
+
+// --- Historical price store / Screener import (app/api/market.py) -------------------
+
+export interface ScreenerImportRequest {
+  screener_company_id?: number | null
+  days?: number
+  consolidated?: boolean
+}
+
+export interface ScreenerImportResult {
+  ticker: string
+  rows_imported: number
+  earliest_date: string | null
+  latest_date: string | null
+  /** Which provider actually supplied the rows -- not necessarily Screener. */
+  source: string
+  status: 'SUCCESS' | 'FALLBACK' | 'UNAVAILABLE'
+  fallback_used: boolean
+  detail: string | null
+}
+
+export interface ScreenerCompanyListImportResult {
+  registered: number
+  skipped: number
+}
+
+export interface ScreenerMappingSummary {
+  ticker: string
+  company_name: string | null
+  screener_company_id: number
+  consolidated: boolean
+}
+
+export type CompanySearchSource = 'screener' | 'local_directory'
+
+export interface CompanySearchResult {
+  ticker: string
+  company_name: string | null
+  screener_company_id: number | null
+  source: CompanySearchSource
+}
+
+export interface CompanySearchResponse {
+  query: string
+  source: CompanySearchSource
+  source_detail: string
+  results: CompanySearchResult[]
+}
+
+export type ScreenerCookieSource = 'runtime' | 'env'
+
+/**
+ * NOT_CONFIGURED  no cookie stored at all
+ * SUCCESS         validated against Screener
+ * AUTH_EXPIRED    Screener rejected the cookie (401/403)
+ * RATE_LIMITED    Screener throttled the check; cookie may still be valid
+ * UNREACHABLE     Screener could not be reached; validation inconclusive
+ * INVALID         unexpected response shape
+ * UNKNOWN         stored but not validated yet
+ */
+export type SourceStatusValue =
+  | 'NOT_CONFIGURED'
+  | 'SUCCESS'
+  | 'AUTH_EXPIRED'
+  | 'RATE_LIMITED'
+  | 'UNREACHABLE'
+  | 'INVALID'
+  | 'UNKNOWN'
+
+export interface ScreenerCookieStatus {
+  configured: boolean
+  source: ScreenerCookieSource | null
+  status: SourceStatusValue
+  last_validated_at: string | null
+  last_success_at: string | null
+  last_error_at: string | null
+  detail: string | null
+}
+
+/**
+ * One data source's declared capabilities and observed health. Deliberately
+ * separates being *configured* from being *capable* of a category from being
+ * the *active* choice for it. See app/api/market.py.
+ */
+export interface DataSourceStatus {
+  name: string
+  label: string
+  type: string
+  configured: boolean
+  status: SourceStatusValue | string
+  capabilities: string[]
+  primary_for: string[]
+  fallback_for: string[]
+  last_success_at: string | null
+  last_error_at: string | null
+  limitation: string | null
+}
+
+export interface DataSourceStatusResponse {
+  sources: DataSourceStatus[]
+}
+
+export interface IndexQuote {
+  name: string
+  symbol: string
+  status: 'available' | 'unavailable'
+  current_price: string | null
+  previous_close: string | null
+  change: string | null
+  change_percent: string | null
+  source: string
+  freshness: string | null
+  warning: string | null
+}
+
+export interface IndexQuotesResponse {
+  indices: IndexQuote[]
+}
+
+export interface ForecastAccuracyEntry {
+  horizon: string
+  method: string
+  prediction_date: string
+  target_date: string
+  predicted_price: string | null
+  actual_price: string | null
+  absolute_error: string | null
+  percentage_error: string | null
+  direction_correct: boolean | null
+}
+
+export interface ForecastAccuracySummary {
+  ticker: string
+  evaluated_count: number
+  newly_evaluated: number
+  mean_absolute_error: string | null
+  mean_percentage_error: string | null
+  direction_accuracy: string | null
+  entries: ForecastAccuracyEntry[]
 }

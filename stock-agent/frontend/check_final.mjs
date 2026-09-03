@@ -1,0 +1,18 @@
+import { chromium } from 'playwright';
+const browser = await chromium.launch();
+const page = await browser.newPage({ viewport: { width: 1440, height: 1600 } });
+await page.goto('http://localhost:5173/', { waitUntil: 'networkidle' });
+await page.getByRole('button', { name: /^sign up$/i }).first().click();
+const email = `check_final_${Date.now()}@example.com`;
+await page.getByLabel(/email/i).fill(email);
+await page.getByLabel(/^password/i).fill('TestPassword123!');
+await page.getByRole('main').getByRole('button', { name: /^sign up$/i }).click();
+await page.waitForTimeout(1200);
+await page.getByRole('button', { name: /^intelligence$/i }).click();
+await page.waitForTimeout(6000);
+await page.screenshot({ path: '/tmp/final_indices.png', fullPage: false });
+await page.evaluate(() => document.getElementById('recent-research-heading')?.scrollIntoView());
+await page.waitForTimeout(500);
+await page.screenshot({ path: '/tmp/final_settings.png', fullPage: true });
+console.log('done');
+await browser.close();

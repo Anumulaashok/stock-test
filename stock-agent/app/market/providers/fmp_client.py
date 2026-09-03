@@ -12,14 +12,20 @@ client — `apikey` query param):
     GET {base_url}/quote?symbol={ticker}
     GET {base_url}/historical-price-eod/full?symbol={ticker}
 
-Field names below are corroborated across FMP's own published docs and
-independent third-party references (`price`, `change`, `changePercentage`,
-`previousClose`, `timestamp` for quotes; `date`, `open`, `high`, `low`,
-`close`, `volume` for historical prices) — this project did not have a
-live FMP market-data key available to independently verify them the way
-Steps 7/8 verified their providers with a real request; treat this as a
-**documented, not live-verified**, integration (see the accompanying
-report's Known Limitations).
+Field names (`price`, `change`, `changePercentage`, `previousClose`,
+`timestamp` for quotes; `date`, `open`, `high`, `low`, `close`, `volume`
+for historical prices) are live-verified against this project's own
+FMP trial key (2026-09-03) for a US ticker (AAPL) — both endpoints
+returned HTTP 200 with exactly this shape.
+
+Known limitation, also live-confirmed: this account's trial plan
+returns HTTP 402 ("Premium Query Parameter") for every non-US
+(NSE/BSE) symbol — FMP only serves US-listed tickers on this key. That
+response is mapped to `MarketDataErrorCode.INVALID_RESPONSE` below like
+any other 4xx, not silently swallowed. This is why `MARKET_DATA_PROVIDER`
+defaults to `indianapi` in `.env` for this Indian-market app; FMP stays
+available as a selectable provider for accounts/plans or tickers it
+does support.
 """
 
 import asyncio

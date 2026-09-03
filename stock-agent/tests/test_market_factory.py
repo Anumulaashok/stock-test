@@ -4,6 +4,7 @@ from app.core.config import Settings
 from app.market.factory import get_market_data_provider
 from app.market.providers.fmp import FMPMarketProvider
 from app.market.providers.indianapi import IndianAPIMarketProvider
+from app.market.providers.yfinance import YFinanceMarketProvider
 
 
 def _settings(**overrides) -> Settings:
@@ -38,3 +39,16 @@ def test_indianapi_provider_selected_by_identifier():
 def test_missing_indian_api_key_raises_when_indianapi_selected():
     with pytest.raises(ValueError, match="INDIAN_API_KEY"):
         get_market_data_provider(_settings(market_data_provider="indianapi", indian_api_key=None))
+
+
+def test_yfinance_provider_selected_by_identifier():
+    provider = get_market_data_provider(_settings(market_data_provider="yfinance"))
+    assert isinstance(provider, YFinanceMarketProvider)
+
+
+def test_yfinance_provider_needs_no_api_key():
+    # Unlike fmp/indianapi, yfinance must build successfully with no keys set at all.
+    provider = get_market_data_provider(
+        _settings(market_data_provider="yfinance", fmp_api_key=None, indian_api_key=None)
+    )
+    assert isinstance(provider, YFinanceMarketProvider)

@@ -237,10 +237,12 @@ def test_delete_nonexistent_watchlist_item_returns_404(db_client):
 
 
 def test_summary_with_no_market_provider_reports_unavailable_prices(db_client, monkeypatch):
-    # Explicitly disable the market data provider rather than relying on
-    # FMP_API_KEY being absent from the ambient environment -- it may well
-    # be configured for real (Step 4 uses it), and this test must never
-    # depend on that, let alone make a live call to the real FMP API.
+    # Explicitly select a provider that requires a key, then clear that
+    # key -- must not depend on the ambient MARKET_DATA_PROVIDER default
+    # (now "yfinance", which needs no key and would otherwise make a
+    # real, live network call here) or on FMP_API_KEY being absent from
+    # the ambient environment.
+    monkeypatch.setenv("MARKET_DATA_PROVIDER", "fmp")
     monkeypatch.setenv("FMP_API_KEY", "")
     get_settings.cache_clear()
 

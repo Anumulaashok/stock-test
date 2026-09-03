@@ -55,6 +55,9 @@ class MarketQuote(BaseModel):
     data_timestamp: str
     freshness: PriceFreshness
     source: str
+    market_cap: Decimal | None = None
+    year_high: Decimal | None = None
+    year_low: Decimal | None = None
 
 
 class HistoricalPricePoint(BaseModel):

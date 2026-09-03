@@ -8,6 +8,7 @@ from app.forecasting.calculations import (
     fit_linear_trend,
     project_calendar_date,
     project_metric,
+    project_trading_date,
 )
 from app.models.financial_results import MetricStatus
 
@@ -228,3 +229,37 @@ def test_project_calendar_date_missing_anchor_is_none():
 
 def test_project_calendar_date_unparseable_anchor_is_none():
     assert project_calendar_date("not-a-date", 5) is None
+
+
+# --- project_trading_date -----------------------------------------------------------------
+
+
+def test_project_trading_date_skips_no_weekend_within_the_week():
+    # 2026-01-07 is a Wednesday.
+    assert project_trading_date("2026-01-07", 1) == "2026-01-08"  # Thu
+    assert project_trading_date("2026-01-07", 2) == "2026-01-09"  # Fri
+
+
+def test_project_trading_date_from_friday_skips_the_weekend():
+    # 2026-01-09 is a Friday -- +1 trading day must land on Monday, not Saturday.
+    assert project_trading_date("2026-01-09", 1) == "2026-01-12"
+
+
+def test_project_trading_date_from_saturday_anchor_skips_to_monday():
+    # 2026-01-10 is a Saturday -- the anchor itself need not be a trading day.
+    assert project_trading_date("2026-01-10", 1) == "2026-01-12"
+
+
+def test_project_trading_date_crossing_a_full_weekend_mid_span():
+    # From Wednesday 2026-01-07, 3 trading days out skips the
+    # Sat 01-10 / Sun 01-11 weekend and lands on Monday 01-12.
+    assert project_trading_date("2026-01-07", 3) == "2026-01-12"
+
+
+def test_project_trading_date_missing_anchor_is_none():
+    assert project_trading_date(None, 5) is None
+    assert project_trading_date("", 5) is None
+
+
+def test_project_trading_date_unparseable_anchor_is_none():
+    assert project_trading_date("not-a-date", 5) is None

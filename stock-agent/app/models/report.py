@@ -206,6 +206,37 @@ class ReportAnalystSection(BaseModel):
 # --- Forecast ---------------------------------------------------------------------------
 
 
+class ReportHistoricalPricePoint(BaseModel):
+    """Actual (already-observed) daily OHLCV -- never a projection."""
+
+    date: str
+    open: Decimal | None = None
+    high: Decimal | None = None
+    low: Decimal | None = None
+    close: Decimal | None
+    volume: Decimal | None = None
+    formatted_close: str | None = None
+
+
+class ReportMarketSection(BaseModel):
+    """Current market quote fields -- previously fetched but discarded
+    before reaching the report (see `AnalysisApplicationService._resolve_market_data`)."""
+
+    source: str
+    current_price: Decimal | None
+    previous_close: Decimal | None
+    change: Decimal | None
+    change_percent: Decimal | None
+    currency: str | None
+    market_status: str
+    market_timestamp: str | None = None
+    freshness: str
+    market_cap: Decimal | None = None
+    year_high: Decimal | None = None
+    year_low: Decimal | None = None
+    formatted_current_price: str | None = None
+
+
 class ReportForecastYear(BaseModel):
     year_offset: int
     value: Decimal | None
@@ -235,6 +266,7 @@ class ReportValuationScenario(BaseModel):
 
 
 class ReportPriceTrendPoint(BaseModel):
+    period: int
     day_offset: int
     date: str | None = None
     projected_price: Decimal | None
@@ -262,6 +294,8 @@ class ReportTechnicalMethod(BaseModel):
     description: str
     projected_price: Decimal | None
     projection_days: int
+    horizon: str = "daily"
+    horizon_period: int = 0
     projected_date: str | None = None
     status: str
     reason: str | None = None
@@ -280,12 +314,43 @@ class ReportTechnicalSignal(BaseModel):
     reason: str
 
 
+class ReportHorizonForecast(BaseModel):
+    """One forecast horizon's (daily/weekly/monthly) price-trend line and
+    technical-method projections. `price_trend` is a genuine per-period
+    series (the same OLS fit evaluated at that horizon's offsets);
+    `technical_methods` stay single deterministic values at the
+    horizon's terminal period -- see
+    `app.models.forecasting.HorizonForecast` for why they are not
+    fabricated into a per-period path."""
+
+    horizon: str
+    label: str
+    price_trend: list[ReportPriceTrendPoint] = Field(default_factory=list)
+    price_trend_status: str | None = None
+    price_trend_reason: str | None = None
+    moving_averages: list[ReportMovingAverage] = Field(default_factory=list)
+    crossover: ReportMovingAverageCrossover | None = None
+    technical_methods: list[ReportTechnicalMethod] = Field(default_factory=list)
+    technical_signal: ReportTechnicalSignal | None = None
+
+
+class ReportMultiHorizonForecast(BaseModel):
+    daily: ReportHorizonForecast
+    weekly: ReportHorizonForecast
+    monthly: ReportHorizonForecast
+
+
 class ReportForecastSection(BaseModel):
     """Deterministic extrapolations of historical data — never a
     recommendation and never a single asserted price target. Every
     projected number carries the historical basis and/or growth-rate
     assumption it was derived from, so it stays as auditable as any
-    other section."""
+    other section.
+
+    `price_trend`/`moving_averages`/`crossover`/`technical_methods`/
+    `technical_signal` below are kept for backward compatibility and are
+    identical in content to `horizons.daily`'s fields. New consumers
+    should read `horizons` for daily/weekly/monthly."""
 
     source: str = "forecast"
     available: bool
@@ -303,6 +368,8 @@ class ReportForecastSection(BaseModel):
     technical_signal: ReportTechnicalSignal | None = None
     current_price: Decimal | None = None
     formatted_current_price: str | None = None
+    horizons: ReportMultiHorizonForecast | None = None
+    historical_prices: list[ReportHistoricalPricePoint] = Field(default_factory=list)
 
 
 # --- Evidence / top-level report -------------------------------------------------------
@@ -333,6 +400,7 @@ class InvestmentResearchReport(BaseModel):
     company: ReportCompany
     status: ReportStatus
     summary: ReportSummary
+    market: ReportMarketSection | None = None
     financials: ReportFinancialSection | None = None
     valuation: ReportValuationSection | None = None
     scoring: ReportScoringSection | None = None

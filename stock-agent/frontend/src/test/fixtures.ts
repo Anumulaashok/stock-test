@@ -80,6 +80,8 @@ export function buildReport(overrides: Partial<InvestmentResearchReport> = {}): 
       technical_signal: null,
       current_price: null,
       formatted_current_price: null,
+      horizons: null,
+      historical_prices: [],
     },
     research: {
       source: 'research',

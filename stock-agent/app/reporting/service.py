@@ -13,7 +13,7 @@ from datetime import datetime, timezone
 
 from app.models.analyst import AnalystEvidence, AnalystResult
 from app.models.financial_results import FinancialAnalysisResult
-from app.models.forecasting import ForecastResult
+from app.models.forecasting import ForecastResult, HorizonForecast, TechnicalForecast
 from app.models.report import (
     InvestmentResearchReport,
     ReportAnalystCategoryAnalysis,
@@ -26,9 +26,13 @@ from app.models.report import (
     ReportForecastMetric,
     ReportForecastSection,
     ReportForecastYear,
+    ReportHistoricalPricePoint,
+    ReportHorizonForecast,
+    ReportMarketSection,
     ReportMetadata,
     ReportMovingAverage,
     ReportMovingAverageCrossover,
+    ReportMultiHorizonForecast,
     ReportPriceTrendPoint,
     ReportResearchItem,
     ReportResearchSection,
@@ -99,6 +103,9 @@ class ReportService:
         )
 
         currency = combined.company.currency
+        market_section = (
+            self._build_market_section(combined.market_quote) if combined.market_quote else None
+        )
         financials_section = self._build_financial_section(combined.financial_analysis, currency)
         valuation_section = (
             self._build_valuation_section(combined.valuation, currency) if combined.valuation else None
@@ -121,6 +128,7 @@ class ReportService:
             company=company,
             status=ReportStatus(combined.status.value),
             summary=summary,
+            market=market_section,
             financials=financials_section,
             valuation=valuation_section,
             scoring=scoring_section,
@@ -141,6 +149,23 @@ class ReportService:
             generated_at=generated_at,
             pipeline_version=combined.metadata.pipeline_version if combined.metadata else None,
             duration_ms=combined.metadata.duration_ms if combined.metadata else None,
+        )
+
+    def _build_market_section(self, quote) -> ReportMarketSection:
+        return ReportMarketSection(
+            source=quote.source,
+            current_price=quote.current_price,
+            previous_close=quote.previous_close,
+            change=quote.change,
+            change_percent=quote.change_percent,
+            currency=quote.currency,
+            market_status=quote.market_status.value,
+            market_timestamp=quote.market_timestamp,
+            freshness=quote.freshness.value,
+            market_cap=quote.market_cap,
+            year_high=quote.year_high,
+            year_low=quote.year_low,
+            formatted_current_price=format_currency(quote.current_price, quote.currency),
         )
 
     def _build_summary(
@@ -300,15 +325,7 @@ class ReportService:
             price_trend_status = trend.status.value
             price_trend_reason = trend.reason
             price_trend_disclaimer = trend.disclaimer
-            price_trend = [
-                ReportPriceTrendPoint(
-                    day_offset=point.day_offset,
-                    date=point.date,
-                    projected_price=point.projected_price,
-                    formatted_projected_price=format_currency(point.projected_price, currency),
-                )
-                for point in trend.points
-            ]
+            price_trend = self._build_price_trend_points(trend, currency)
 
         moving_averages: list[ReportMovingAverage] = []
         crossover: ReportMovingAverageCrossover | None = None
@@ -321,37 +338,30 @@ class ReportService:
             technical_disclaimer = technical.disclaimer
             technical_signal = compute_technical_signal(technical)
             current_price = technical.current_price
-            moving_averages = [
-                ReportMovingAverage(
-                    window=ma.window,
-                    value=ma.value,
-                    status=ma.status.value,
-                    reason=ma.reason,
-                    formatted_value=format_currency(ma.value, currency),
-                )
-                for ma in technical.moving_averages
-            ]
-            if technical.crossover:
-                crossover = ReportMovingAverageCrossover(
-                    short_window=technical.crossover.short_window,
-                    long_window=technical.crossover.long_window,
-                    signal=technical.crossover.signal,
-                    status=technical.crossover.status.value,
-                    reason=technical.crossover.reason,
-                )
-            technical_methods = [
-                ReportTechnicalMethod(
-                    method=method.method,
-                    description=method.description,
-                    projected_price=method.projected_price,
-                    projection_days=method.projection_days,
-                    projected_date=method.projected_date,
-                    status=method.status.value,
-                    reason=method.reason,
-                    formatted_projected_price=format_currency(method.projected_price, currency),
-                )
-                for method in technical.methods
-            ]
+            moving_averages = self._build_moving_averages(technical, currency)
+            crossover = self._build_crossover(technical)
+            technical_methods = self._build_technical_methods(technical, currency)
+
+        horizons_section: ReportMultiHorizonForecast | None = None
+        if forecast.horizons:
+            horizons_section = ReportMultiHorizonForecast(
+                daily=self._build_horizon_forecast(forecast.horizons.daily, currency),
+                weekly=self._build_horizon_forecast(forecast.horizons.weekly, currency),
+                monthly=self._build_horizon_forecast(forecast.horizons.monthly, currency),
+            )
+
+        historical_prices = [
+            ReportHistoricalPricePoint(
+                date=point.timestamp,
+                open=point.open,
+                high=point.high,
+                low=point.low,
+                close=point.close,
+                volume=point.volume,
+                formatted_close=format_currency(point.close, currency),
+            )
+            for point in forecast.historical_prices
+        ]
 
         return ReportForecastSection(
             available=True,
@@ -371,6 +381,76 @@ class ReportService:
             technical_signal=technical_signal,
             current_price=current_price,
             formatted_current_price=format_currency(current_price, currency),
+            horizons=horizons_section,
+            historical_prices=historical_prices,
+        )
+
+    def _build_price_trend_points(self, trend, currency: str | None) -> list[ReportPriceTrendPoint]:
+        return [
+            ReportPriceTrendPoint(
+                period=point.period,
+                day_offset=point.day_offset,
+                date=point.date,
+                projected_price=point.projected_price,
+                formatted_projected_price=format_currency(point.projected_price, currency),
+            )
+            for point in trend.points
+        ]
+
+    def _build_moving_averages(self, technical: TechnicalForecast, currency: str | None) -> list[ReportMovingAverage]:
+        return [
+            ReportMovingAverage(
+                window=ma.window,
+                value=ma.value,
+                status=ma.status.value,
+                reason=ma.reason,
+                formatted_value=format_currency(ma.value, currency),
+            )
+            for ma in technical.moving_averages
+        ]
+
+    def _build_crossover(self, technical: TechnicalForecast) -> ReportMovingAverageCrossover | None:
+        if not technical.crossover:
+            return None
+        crossover = technical.crossover
+        return ReportMovingAverageCrossover(
+            short_window=crossover.short_window,
+            long_window=crossover.long_window,
+            signal=crossover.signal,
+            status=crossover.status.value,
+            reason=crossover.reason,
+        )
+
+    def _build_technical_methods(self, technical: TechnicalForecast, currency: str | None) -> list[ReportTechnicalMethod]:
+        return [
+            ReportTechnicalMethod(
+                method=method.method,
+                description=method.description,
+                projected_price=method.projected_price,
+                projection_days=method.projection_days,
+                horizon=method.horizon.value,
+                horizon_period=method.horizon_period,
+                projected_date=method.projected_date,
+                status=method.status.value,
+                reason=method.reason,
+                formatted_projected_price=format_currency(method.projected_price, currency),
+            )
+            for method in technical.methods
+        ]
+
+    def _build_horizon_forecast(self, horizon_forecast: HorizonForecast, currency: str | None) -> ReportHorizonForecast:
+        trend = horizon_forecast.price_trend
+        technical = horizon_forecast.technical
+        return ReportHorizonForecast(
+            horizon=horizon_forecast.horizon.value,
+            label=horizon_forecast.label,
+            price_trend=self._build_price_trend_points(trend, currency),
+            price_trend_status=trend.status.value,
+            price_trend_reason=trend.reason,
+            moving_averages=self._build_moving_averages(technical, currency),
+            crossover=self._build_crossover(technical),
+            technical_methods=self._build_technical_methods(technical, currency),
+            technical_signal=compute_technical_signal(technical),
         )
 
     def _build_research_section(self, research: ResearchResult | None) -> ReportResearchSection:

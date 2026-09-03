@@ -40,8 +40,10 @@ class CachedMarketDataService:
         key = self._key(ticker, include_recent_prices)
         hit = await self._cache.get(key)
         if hit is not None and not hit.is_expired:
+            logger.info("provider_cache_hit provider=%s ticker=%s data_type=market_snapshot", self._provider_name, ticker)
             return MarketSnapshotResult.model_validate_json(hit.value)
 
+        logger.info("provider_fetch provider=%s ticker=%s data_type=market_snapshot", self._provider_name, ticker)
         result = await self._inner.get_snapshot(ticker, include_recent_prices=include_recent_prices)
 
         if result.status == "success":

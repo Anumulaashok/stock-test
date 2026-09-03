@@ -59,13 +59,18 @@ _PROVIDER_BUILDERS: dict[str, Callable[[Settings], FinancialDataProvider]] = {
 }
 
 
-def get_financial_data_provider(settings: Settings) -> FinancialDataProvider:
-    provider_name = settings.financial_data_provider.strip().lower()
+def get_financial_data_provider(
+    settings: Settings, provider_name: str | None = None
+) -> FinancialDataProvider:
+    """`provider_name` selects one specific provider, for callers building
+    a whole priority chain; omitted, it uses the configured single
+    provider exactly as before."""
+    provider_name = (provider_name or settings.financial_data_provider).strip().lower()
     builder = _PROVIDER_BUILDERS.get(provider_name)
     if builder is None:
         supported = ", ".join(sorted(_PROVIDER_BUILDERS))
         raise ValueError(
-            f"Unsupported FINANCIAL_DATA_PROVIDER: {settings.financial_data_provider!r}. "
+            f"Unsupported FINANCIAL_DATA_PROVIDER: {provider_name!r}. "
             f"Supported providers: {supported}. FINANCIAL_DATA_PROVIDER must be a "
             "provider identifier, not a URL — set the provider's own base-URL setting "
             "instead (e.g. INDIAN_API_BASE_URL for indianapi, FMP_BASE_URL for fmp)."

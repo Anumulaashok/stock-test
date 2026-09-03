@@ -82,6 +82,36 @@ class IndianAPIClient:
             )
         return data
 
+    async def get_historical_stat(self, name: str, stats: str) -> dict:
+        """`/historical_stats?stock_name={name}&stats={stats}` -- the
+        fallback financial-data source (see `app.data.mappers.indianapi_historical`)
+        used when `/stock`'s own `financials` field is `null`. `stats` is
+        one of `"balancesheet"`, `"cashflow"`, `"ratios"`, `"quarter_results"`.
+        Response shape is `{metric_name: {period_label: value}}` -- verified
+        live for HUDCO (2026-09-03).
+        """
+        data = await self._get_json_object(
+            "/historical_stats", {"stock_name": name, "stats": stats}
+        )
+        if "error" in data:
+            raise ProviderError(
+                FinancialDataErrorCode.COMPANY_NOT_FOUND,
+                f"no {stats} data was found for '{name}'",
+            )
+        return data
+
+    async def get_historical_balance_sheet(self, name: str) -> dict:
+        return await self.get_historical_stat(name, "balancesheet")
+
+    async def get_historical_cash_flow(self, name: str) -> dict:
+        return await self.get_historical_stat(name, "cashflow")
+
+    async def get_historical_ratios(self, name: str) -> dict:
+        return await self.get_historical_stat(name, "ratios")
+
+    async def get_historical_quarter_results(self, name: str) -> dict:
+        return await self.get_historical_stat(name, "quarter_results")
+
     async def get_historical_prices(self, name: str, period: str = "1yr") -> dict:
         """Daily closing-price history from the `/historical_data` endpoint
         (same account/auth as `/stock`) — verified live: returns

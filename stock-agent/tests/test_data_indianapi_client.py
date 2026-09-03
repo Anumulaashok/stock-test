@@ -194,3 +194,54 @@ async def test_non_object_schema_raises_schema_mismatch():
     with pytest.raises(ProviderError) as exc_info:
         await _client().get_stock("Reliance")
     assert exc_info.value.code is FinancialDataErrorCode.SCHEMA_MISMATCH
+
+
+# --- /historical_stats (fallback financial-data source) -----------------------------
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_get_historical_balance_sheet_sends_correct_params():
+    route = respx.get(f"{BASE_URL}/historical_stats").mock(
+        return_value=httpx.Response(200, json={"Total Assets": {"Mar 2026": 166838}})
+    )
+    data = await _client().get_historical_balance_sheet("HUDCO")
+    assert data == {"Total Assets": {"Mar 2026": 166838}}
+    request = route.calls.last.request
+    assert request.url.params["stock_name"] == "HUDCO"
+    assert request.url.params["stats"] == "balancesheet"
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_get_historical_cash_flow_uses_cashflow_stat():
+    route = respx.get(f"{BASE_URL}/historical_stats").mock(
+        return_value=httpx.Response(200, json={"Free Cash Flow": {"Mar 2026": -33906}})
+    )
+    await _client().get_historical_cash_flow("HUDCO")
+    assert route.calls.last.request.url.params["stats"] == "cashflow"
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_get_historical_ratios_uses_ratios_stat():
+    route = respx.get(f"{BASE_URL}/historical_stats").mock(return_value=httpx.Response(200, json={"ROE %": {}}))
+    await _client().get_historical_ratios("HUDCO")
+    assert route.calls.last.request.url.params["stats"] == "ratios"
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_get_historical_quarter_results_uses_quarter_results_stat():
+    route = respx.get(f"{BASE_URL}/historical_stats").mock(return_value=httpx.Response(200, json={"Revenue": {}}))
+    await _client().get_historical_quarter_results("HUDCO")
+    assert route.calls.last.request.url.params["stats"] == "quarter_results"
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_historical_stat_not_found_raises_company_not_found():
+    respx.get(f"{BASE_URL}/historical_stats").mock(return_value=httpx.Response(200, json={"error": "not found"}))
+    with pytest.raises(ProviderError) as exc_info:
+        await _client().get_historical_balance_sheet("NOPE")
+    assert exc_info.value.code is FinancialDataErrorCode.COMPANY_NOT_FOUND

@@ -11,12 +11,11 @@ import logging
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.api.dependencies import build_data_source_manager
 from app.auth.dependencies import get_current_user
 from app.core.config import Settings, get_settings
 from app.db.base import get_db
 from app.db.models import UserRow
-from app.market.factory import get_market_data_provider
-from app.market.service import MarketDataService
 from app.models.portfolio import (
     Holding,
     HoldingCreateRequest,
@@ -32,20 +31,19 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/v1", tags=["portfolio"])
 
 
-def _build_market_data_service(settings: Settings) -> MarketDataService | None:
-    """Returns `None` (not an error) when unconfigured — a portfolio is
-    still usable without live prices; `PortfolioService` reports
-    `price_status="unavailable"` rather than failing the whole request."""
-    try:
-        provider = get_market_data_provider(settings)
-    except ValueError as exc:
-        logger.info("Market data provider not configured: %s", exc)
-        return None
-    return MarketDataService(provider, default_recent_prices_limit=settings.market_data_recent_prices_limit)
+def get_portfolio_service(
+    settings: Settings = Depends(get_settings),
+    db: AsyncSession = Depends(get_db),
+) -> PortfolioService:
+    """Uses the same `DataSourceManager` every other caller does, so a
+    watchlist price falls back exactly like a research price -- one
+    source-selection system, not two. A quote-only call, never a full
+    research run.
 
-
-def get_portfolio_service(settings: Settings = Depends(get_settings)) -> PortfolioService:
-    return PortfolioService(_build_market_data_service(settings))
+    Returns a manager even when no provider is configured: `get_quote`
+    then reports a structured error and `PortfolioService` marks the
+    holding `price_status="unavailable"` rather than failing the request."""
+    return PortfolioService(build_data_source_manager(settings, db))
 
 
 def _error_status(code: str) -> int:

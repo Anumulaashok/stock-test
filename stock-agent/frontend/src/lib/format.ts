@@ -19,6 +19,17 @@ export function formatDate(value: string | null | undefined): string | null {
   return parsed.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' })
 }
 
+export function formatDateTime(value: string | null | undefined): string | null {
+  if (!value) return null
+  const parsed = new Date(value)
+  if (Number.isNaN(parsed.getTime())) return value
+  return (
+    parsed.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' }) +
+    ' · ' +
+    parsed.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })
+  )
+}
+
 export function humanizeKey(key: string): string {
   return key.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())
 }

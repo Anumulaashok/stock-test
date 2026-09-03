@@ -8,6 +8,7 @@ and simultaneously unhealthy, and the status API must be able to say so.
 
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
+from functools import lru_cache
 
 from app.sources.capabilities import Capability, Category, can_serve
 from app.sources.provenance import SourceStatus
@@ -115,24 +116,51 @@ class SourceHealth:
 
 
 class SourceRegistry:
-    """Capabilities + configured chains + live health, in one place."""
+    """Capabilities + configured chains + live health, in one place.
+
+    `health_store`, when given, lets health survive across separate
+    `SourceRegistry` instances (see `get_shared_health_store` below) --
+    without it every construction gets its own private, empty health
+    dict, which is what a caller building a fresh registry per request
+    wants for `configured` (recomputed from live settings/cookie state)
+    but is exactly the bug for observed health (`last_success_at` etc
+    would never accumulate). Passing no store keeps the old
+    every-instance-is-isolated behavior, which existing direct
+    `SourceRegistry(...)` construction (e.g. in tests) still relies on.
+    """
 
     def __init__(
         self,
         *,
         chains: dict[Category, list[str]],
         configured: dict[str, bool] | None = None,
+        health_store: dict[str, SourceHealth] | None = None,
     ) -> None:
         self._chains = chains
-        self._health: dict[str, SourceHealth] = {}
+        self._health: dict[str, SourceHealth] = health_store if health_store is not None else {}
         configured = configured or {}
         for name, definition in SOURCE_DEFINITIONS.items():
             is_configured = configured.get(name, False)
-            self._health[name] = SourceHealth(
-                name=definition.name,
-                configured=is_configured,
-                status=SourceStatus.NOT_CONFIGURED if not is_configured else SourceStatus.SUCCESS,
-            )
+            existing = self._health.get(name)
+            if existing is None:
+                self._health[name] = SourceHealth(
+                    name=definition.name,
+                    configured=is_configured,
+                    status=SourceStatus.NOT_CONFIGURED if not is_configured else SourceStatus.SUCCESS,
+                )
+            elif existing.configured != is_configured:
+                # A real configuration change (e.g. a Screener cookie
+                # was just added/removed at runtime) -- reset to the
+                # same optimistic-or-unconfigured starting state a fresh
+                # construction would have, rather than keeping stale
+                # health from a now-irrelevant configuration.
+                existing.configured = is_configured
+                existing.status = SourceStatus.NOT_CONFIGURED if not is_configured else SourceStatus.SUCCESS
+                existing.last_success_at = None
+                existing.last_error_at = None
+                existing.last_detail = None
+            # else: configuration unchanged -- keep accumulated health
+            # (status/timestamps) exactly as observed by live traffic.
 
     def definition(self, name: str) -> SourceDefinition | None:
         return SOURCE_DEFINITIONS.get(name)
@@ -167,3 +195,18 @@ class SourceRegistry:
         if name not in chain:
             return None
         return "primary" if chain[0] == name else "fallback"
+
+
+@lru_cache
+def get_shared_health_store() -> dict[str, SourceHealth]:
+    """The process-lifetime health store `build_source_registry` passes
+    to every `SourceRegistry` it builds, so a provider's observed health
+    accumulates across requests instead of resetting on each one (a
+    fresh registry is still built per request/call for `configured`,
+    which must reflect the current cookie/settings state). `lru_cache`
+    with no arguments returns the exact same dict instance every call
+    within a process, exactly like `app.core.config.get_settings`.
+    Tests must clear this between test functions (see
+    `tests/conftest.py`) or health observed in one test leaks into the
+    next."""
+    return {}

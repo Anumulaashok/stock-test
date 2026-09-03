@@ -1,6 +1,7 @@
-import { ComingSoonPage } from './ComingSoonPage'
+import { MarketOpportunity } from '../features/discover/MarketOpportunity'
 
-/** Placeholder -- built out by Phase 2 Agent C (Discover). */
+/** Sector ranking, built from the app's own deterministic scoring --
+ * see `features/discover/MarketOpportunity.tsx`. */
 export function DiscoverPage() {
-  return <ComingSoonPage title="Discover" />
+  return <MarketOpportunity />
 }

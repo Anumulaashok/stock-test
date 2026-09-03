@@ -7,17 +7,27 @@ import { EmptyState } from '../SectionHeader'
 /** §5: the score components as comparable horizontal rows instead of a
  * grid of large colored cards -- easier to scan down, and each row
  * expands to the real sub-components the backend computed (never
- * fabricated sub-metrics). */
-export function ScoreBreakdown({ scoring }: { scoring: ReportScoringSection | null }) {
+ * fabricated sub-metrics). `hideHeading` drops the section's own `<h2>`
+ * for callers embedding this inside their own heading/Disclosure (e.g.
+ * `OverviewTab`), so the two never stack. */
+export function ScoreBreakdown({
+  scoring,
+  hideHeading = false,
+}: {
+  scoring: ReportScoringSection | null
+  hideHeading?: boolean
+}) {
   if (!scoring || scoring.categories.length === 0) {
     return <EmptyState title="Score breakdown unavailable" reason="Scoring did not run for this analysis." />
   }
 
   return (
-    <section aria-labelledby="score-breakdown-heading">
-      <h2 id="score-breakdown-heading" className="section-heading mb-2">
-        Score Breakdown
-      </h2>
+    <section aria-labelledby={hideHeading ? undefined : 'score-breakdown-heading'} aria-label={hideHeading ? 'Score breakdown' : undefined}>
+      {!hideHeading && (
+        <h2 id="score-breakdown-heading" className="section-heading mb-2">
+          Score Breakdown
+        </h2>
+      )}
       <div className="surface-card divide-y divide-[var(--color-border)] px-4">
         {scoring.categories.map((category) => {
           const score = toDisplayNumber(category.score, 0)

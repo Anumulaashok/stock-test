@@ -1,3 +1,4 @@
+import time
 from decimal import Decimal
 
 import httpx
@@ -34,7 +35,11 @@ async def test_get_quote_maps_current_price():
                     "changePercentage": -0.05228678,
                     "change": -0.17,
                     "previousClose": 325.13,
-                    "timestamp": 1788379201,
+                    # A few minutes old, computed relative to test-run
+                    # time rather than a fixed date, so freshness
+                    # classification (DELAYED, not STALE) doesn't age
+                    # out as real time passes.
+                    "timestamp": int(time.time()) - 300,
                 }
             ],
         )

@@ -1,10 +1,20 @@
-import { ComingSoonPage } from '../ComingSoonPage'
+import { HistoricalImportCard } from '../../features/settings/HistoricalImportCard'
+import { MappingImportCard } from '../../features/settings/MappingImportCard'
+import { ScreenerCookieCard } from '../../features/settings/ScreenerCookieCard'
 
-/** Placeholder -- built out by Phase 2 Agent E, receiving the admin
- * widgets evicted from `IntelligencePage`: `HistoricalImportWidget`,
- * `MappingListImportWidget`, `TickerMappingAutocomplete`, and
- * `ScreenerCookieSettingsWidget`. Never renders a key, cookie, or token
- * -- status words only. */
+/** Admin/operator widgets evicted from `IntelligencePage` -- data
+ * backfill and source-credential management. Never renders a key,
+ * cookie, or token, only status words. */
 export function SystemSettingsPage() {
-  return <ComingSoonPage title="System" />
+  return (
+    <div className="flex flex-col gap-4">
+      <div>
+        <h2 className="text-base font-semibold">System</h2>
+        <p className="support-text">Data backfill and source-credential administration.</p>
+      </div>
+      <ScreenerCookieCard />
+      <HistoricalImportCard />
+      <MappingImportCard />
+    </div>
+  )
 }

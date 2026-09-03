@@ -239,11 +239,39 @@ export interface ReportPriceTrendPoint {
   formatted_projected_price: string | null
 }
 
-/** An actual (already-observed) closing price -- never a projection. */
+/** An actual (already-observed) daily OHLCV bar -- never a projection.
+ * `open`/`high`/`low`/`volume` are populated by the backend
+ * (app/models/report.py's ReportHistoricalPricePoint) but were missing
+ * from this mirror; only `close` was previously exposed here. */
 export interface ReportHistoricalPricePoint {
   date: string
+  open?: string | null
+  high?: string | null
+  low?: string | null
   close: string | null
+  volume?: string | null
   formatted_close: string | null
+}
+
+/** Current market quote fields -- fetched separately from the financial
+ * statements and never merged into them (see app/market/). Populated
+ * only when a market snapshot was available for this run. This mirrors
+ * `ReportMarketSection` (app/models/report.py), which the backend has
+ * always emitted at `report.market` but this file previously omitted. */
+export interface ReportMarketSection {
+  source: string
+  current_price: string | null
+  previous_close: string | null
+  change: string | null
+  change_percent: string | null
+  currency: string | null
+  market_status: string
+  market_timestamp: string | null
+  freshness: string
+  market_cap: string | null
+  year_high: string | null
+  year_low: string | null
+  formatted_current_price: string | null
 }
 
 export interface ReportMovingAverage {
@@ -328,6 +356,7 @@ export interface InvestmentResearchReport {
   company: ReportCompany
   status: ReportStatus
   summary: ReportSummary
+  market: ReportMarketSection | null
   financials: ReportFinancialSection | null
   valuation: ReportValuationSection | null
   scoring: ReportScoringSection | null

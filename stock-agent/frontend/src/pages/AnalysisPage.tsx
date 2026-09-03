@@ -8,12 +8,9 @@ import { SearchBar } from '../components/SearchBar'
 import { LoadingState } from '../components/LoadingState'
 import { ErrorBanner } from '../components/ErrorBanner'
 import { StatusBanner } from '../components/StatusBanner'
-import { InvestmentSummary } from '../components/InvestmentSummary'
-import { ScoreOverview } from '../components/ScoreOverview'
 import { ValuationSection } from '../components/ValuationSection'
 import { ForecastSection } from '../components/ForecastSection'
 import { FinancialSection } from '../components/FinancialSection'
-import { RiskSection } from '../components/RiskSection'
 import { ResearchSection } from '../components/ResearchSection'
 import { ResearchSnapshotBanner } from '../components/ResearchSnapshotBanner'
 import { ResearchHistorySection } from '../components/ResearchHistorySection'
@@ -22,6 +19,12 @@ import { StickyAskAssistant } from '../components/StickyAskAssistant'
 import { WarningsSection } from '../components/WarningsSection'
 import { DataQualitySection } from '../components/DataQualitySection'
 import { buildEvidenceValueMap } from '../lib/evidenceValues'
+import { StockHeader } from '../components/stock/StockHeader'
+import { InvestmentVerdict } from '../components/stock/InvestmentVerdict'
+import { ScoreBreakdown } from '../components/stock/ScoreBreakdown'
+import { WhyThisScore } from '../components/stock/WhyThisScore'
+import { InvestorSummary } from '../components/stock/InvestorSummary'
+import { RiskOverview } from '../components/stock/RiskOverview'
 
 type ViewState =
   | { kind: 'idle' }
@@ -182,22 +185,29 @@ export function AnalysisPage({ initialTicker }: AnalysisPageProps = {}) {
             onForceRefresh={() => handleRefresh(true)}
           />
           <StatusBanner status={report.status} ticker={state.ticker} />
-          <DataQualitySection report={report} />
-          <ForecastSection forecast={report.forecast} />
-          <InvestmentSummary
-            report={report}
+
+          {/* Decision -> explanation -> evidence -> detail (see the plan's
+              §33 flow): verdict and header first, raw sections last. */}
+          <StockHeader
+            company={report.company}
+            market={report.market}
             authStatus={authStatus}
             inWatchlist={inWatchlist}
             watchlistPending={watchlistPending}
             watchlistError={watchlistError}
             onToggleWatchlist={handleToggleWatchlist}
           />
-          <ScoreOverview scoring={report.scoring} />
+          <InvestmentVerdict summary={report.summary} />
+          <ScoreBreakdown scoring={report.scoring} />
+          <WhyThisScore report={report} />
+          <InvestorSummary report={report} />
+          <RiskOverview risk={report.risk} />
           <ValuationSection valuation={report.valuation} />
-          <RiskSection risk={report.risk} />
-          <AnalystSection analyst={report.analyst} evidenceValues={buildEvidenceValueMap(report)} />
           <FinancialSection financials={report.financials} />
+          <ForecastSection forecast={report.forecast} />
           <ResearchSection research={report.research} />
+          <AnalystSection analyst={report.analyst} evidenceValues={buildEvidenceValueMap(report)} />
+          <DataQualitySection report={report} />
           <WarningsSection warnings={report.warnings} />
           <ResearchHistorySection ticker={state.ticker} onSelectRun={handleSelectHistoryRun} />
         </div>

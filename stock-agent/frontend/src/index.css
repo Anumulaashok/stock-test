@@ -293,6 +293,44 @@ body {
   color: var(--color-text);
 }
 
+/* Shimmer skeleton for content-shaped loading states -- replaces bare
+   "Loading…" strings. Sized/shaped by the caller via width/height. */
+.skeleton {
+  border-radius: var(--radius-md);
+  background: linear-gradient(
+    100deg,
+    var(--color-surface-raised) 30%,
+    var(--color-border) 50%,
+    var(--color-surface-raised) 70%
+  );
+  background-size: 200% 100%;
+  animation: skeleton-shimmer 1.4s ease-in-out infinite;
+}
+
+@keyframes skeleton-shimmer {
+  from {
+    background-position: 150% 0;
+  }
+  to {
+    background-position: -50% 0;
+  }
+}
+
+/* One color+text tone per signal state (§12) -- never color alone.
+   `.tone-*` sets the text/icon color; pair with a label. */
+.tone-strong {
+  color: var(--color-status-positive);
+}
+.tone-watch {
+  color: var(--color-status-medium);
+}
+.tone-risk {
+  color: var(--color-status-critical);
+}
+.tone-insufficient {
+  color: var(--color-text-faint);
+}
+
 @media (prefers-reduced-motion: reduce) {
   * {
     animation-duration: 0.001ms !important;

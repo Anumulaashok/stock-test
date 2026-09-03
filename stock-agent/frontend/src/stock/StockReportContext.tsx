@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react'
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { fetchLatestResearch, fetchResearchRun, runResearch } from '../api/research'
 import { ApiError, toApiError } from '../api/client'
 import type { InvestmentResearchReport, ResearchRunResult } from '../types/backend'
@@ -50,13 +50,28 @@ export function StockReportProvider({
   const [state, setState] = useState<StockReportState>({ status: 'loading', ticker })
   const [refreshing, setRefreshing] = useState(false)
 
-  const load = useCallback(
-    async (explicitRunId?: string) => {
-      setState({ status: 'loading', ticker })
+  // A single monotonic counter guards every state-writing async path
+  // below (`load`'s effect, `runNew`) -- `reload(id)` calling `load` can
+  // be in flight when `researchRunId` changes underneath it (or when
+  // `runNew` is triggered mid-load), and whichever resolves last must
+  // never be allowed to overwrite a result from a call that started
+  // more recently, regardless of resolution order.
+  const requestId = useRef(0)
+
+  /** Every state-writing path funnels through here. Bumps `requestId`
+   * once per call and checks it after every await -- whichever call
+   * started most recently always wins, regardless of resolution order.
+   * `markRefreshing` is false for the initial/ticker-change load (there
+   * is nothing to show a spinner over yet) and true for an explicit
+   * reload/run over an already-rendered report. */
+  const fetchAndSet = useCallback(
+    async (fetcher: () => Promise<ResearchRunResult | null>, markRefreshing: boolean) => {
+      const id = ++requestId.current
+      if (markRefreshing) setRefreshing(true)
+      else setState({ status: 'loading', ticker })
       try {
-        const run = explicitRunId
-          ? await fetchResearchRun(ticker, explicitRunId)
-          : await fetchLatestResearch(ticker)
+        const run = await fetcher()
+        if (id !== requestId.current) return
         if (!run) {
           setState({ status: 'empty', ticker })
           return
@@ -72,7 +87,10 @@ export function StockReportProvider({
         }
         setState({ status: 'ready', ticker, run, report })
       } catch (error) {
+        if (id !== requestId.current) return
         setState({ status: 'error', ticker, error: toApiError(error) })
+      } finally {
+        if (markRefreshing && id === requestId.current) setRefreshing(false)
       }
     },
     [ticker],
@@ -84,44 +102,22 @@ export function StockReportProvider({
   // history, or navigating tabs with `?run=` in the URL) does, and must
   // re-fetch.
   useEffect(() => {
-    void load(researchRunId)
+    const fetcher = researchRunId
+      ? () => fetchResearchRun(ticker, researchRunId)
+      : () => fetchLatestResearch(ticker)
+    void fetchAndSet(fetcher, false)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [researchRunId])
 
   const runNew = useCallback(
-    async (opts?: { force?: boolean }) => {
-      setRefreshing(true)
-      try {
-        const run = await runResearch(ticker, opts?.force ?? false)
-        const report = run.result.report
-        if (!report) {
-          setState({
-            status: 'error',
-            ticker,
-            error: new ApiError('The analysis completed but no structured report was returned.', 'server'),
-          })
-          return
-        }
-        setState({ status: 'ready', ticker, run, report })
-      } catch (error) {
-        setState({ status: 'error', ticker, error: toApiError(error) })
-      } finally {
-        setRefreshing(false)
-      }
-    },
-    [ticker],
+    (opts?: { force?: boolean }) => fetchAndSet(() => runResearch(ticker, opts?.force ?? false), true),
+    [fetchAndSet, ticker],
   )
 
   const reload = useCallback(
-    async (explicitRunId?: string) => {
-      setRefreshing(true)
-      try {
-        await load(explicitRunId)
-      } finally {
-        setRefreshing(false)
-      }
-    },
-    [load],
+    (explicitRunId?: string) =>
+      fetchAndSet(explicitRunId ? () => fetchResearchRun(ticker, explicitRunId) : () => fetchLatestResearch(ticker), true),
+    [fetchAndSet, ticker],
   )
 
   const value = useMemo<StockReportContextValue>(

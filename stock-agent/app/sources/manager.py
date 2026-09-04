@@ -13,6 +13,7 @@ Screener is never asked for a financial statement it cannot produce.
 import logging
 import time
 from dataclasses import dataclass
+from datetime import datetime, timezone
 
 from app.data.models import (
     CompanyIdentifier,
@@ -20,7 +21,7 @@ from app.data.models import (
     FinancialDataErrorCode,
     FinancialDataFetchResult,
 )
-from app.models.market import MarketDataError, MarketDataErrorCode, MarketSnapshotResult
+from app.models.market import MarketDataError, MarketDataErrorCode, MarketSnapshot, MarketSnapshotResult
 from app.sources.capabilities import Category
 from app.sources.identity import CompanyIdentity, CompanyIdentityResolver
 from app.sources.provenance import (
@@ -224,6 +225,7 @@ class DataSourceManager:
         chain = self._registry.chain_for(Category.MARKET_QUOTE)
         attempts: list[SourceAttempt] = []
         primary_result: MarketSnapshotResult | None = None
+        quote_source: str | None = None
 
         for name in chain:
             fetcher = self._market_providers.get(name)
@@ -255,16 +257,28 @@ class DataSourceManager:
 
             if status == SourceStatus.SUCCESS:
                 self._registry.health(name).record_success()
-                self._record(Category.MARKET_QUOTE, attempts)
-                if include_recent_prices:
-                    await self._apply_historical_primary(identity, result, market_source=name)
-                return result
+                primary_result = result
+                quote_source = name
+                break
 
             self._registry.health(name).record_failure(status, attempt.detail)
             if primary_result is None:
                 primary_result = result
 
         self._record(Category.MARKET_QUOTE, attempts)
+
+        if include_recent_prices:
+            # Screener's historical close/DMA series doesn't need a live
+            # quote to exist -- it's fetched independently, by company
+            # id, not derived from any market provider's response. Tying
+            # it to a *successful* quote (as this used to) meant any
+            # ticker whose quote provider failed (e.g. delisted from/
+            # never listed on yfinance, but still tracked on Screener)
+            # got no historical/technical data at all, even though
+            # Screener genuinely had it. Now attempted regardless of
+            # whether the quote loop above found a live price.
+            primary_result = await self._ensure_historical(identity, primary_result, quote_source)
+
         if primary_result is not None:
             return primary_result
         return MarketSnapshotResult(
@@ -281,34 +295,45 @@ class DataSourceManager:
         without pulling a full price history."""
         return await self.get_snapshot(ticker, include_recent_prices=False)
 
-    async def _apply_historical_primary(
-        self, identity: CompanyIdentity, result: MarketSnapshotResult, *, market_source: str
-    ) -> None:
-        """Let the historical chain's primary own the price series.
-
-        The market provider's own series is already in `result` and acts
-        as the fallback, so a Screener failure here costs nothing — the
-        quote and the run both continue.
+    async def _ensure_historical(
+        self,
+        identity: CompanyIdentity,
+        result: MarketSnapshotResult | None,
+        quote_source: str | None,
+    ) -> MarketSnapshotResult | None:
+        """Attaches Screener's historical close/DMA series independently
+        of whether a live quote succeeded. Screener's chart fetch only
+        needs the company's identity -- never a quote response to build
+        on -- so tying it to a *successful* quote (as this used to)
+        meant any ticker whose quote provider failed (delisted from, or
+        never listed on, yfinance, but still tracked on Screener) got no
+        historical/technical data at all, even though Screener genuinely
+        had it. When no quote succeeded, a fetched series still upgrades
+        the result to a usable (`quote=None`) snapshot, since
+        technical/forecast signals only need historical closes, not
+        today's live price.
         """
         chain = self._registry.chain_for(Category.HISTORICAL_PRICE)
         provider = self._historical_provider
+        has_quote_snapshot = result is not None and result.snapshot is not None
+
         if provider is None or self._db is None or not chain or chain[0] != provider.name:
-            # No dedicated historical primary is available, so the series
-            # came from whichever market provider served the quote. Report
-            # that provider by name rather than the configured chain head,
-            # which may be a different provider entirely.
-            self._record(
-                Category.HISTORICAL_PRICE,
-                [
-                    SourceAttempt(
-                        provider=market_source,
-                        status=SourceStatus.SUCCESS
-                        if result.snapshot.recent_prices
-                        else SourceStatus.UNAVAILABLE,
-                    )
-                ],
-            )
-            return
+            # No dedicated historical primary configured -- report
+            # whatever series the market provider itself carried, if any
+            # quote succeeded at all.
+            if has_quote_snapshot:
+                self._record(
+                    Category.HISTORICAL_PRICE,
+                    [
+                        SourceAttempt(
+                            provider=quote_source,
+                            status=SourceStatus.SUCCESS
+                            if result.snapshot.recent_prices
+                            else SourceStatus.UNAVAILABLE,
+                        )
+                    ],
+                )
+            return result
 
         started = time.monotonic()
         try:
@@ -326,11 +351,25 @@ class DataSourceManager:
 
         if attempt.status == SourceStatus.SUCCESS and points:
             self._registry.health(provider.name).record_success()
-            result.snapshot.recent_prices = points
-        else:
-            self._registry.health(provider.name).record_failure(attempt.status, attempt.detail)
+            self._record(Category.HISTORICAL_PRICE, attempts)
+            if has_quote_snapshot:
+                result.snapshot.recent_prices = points
+                return result
+            return MarketSnapshotResult(
+                status="success",
+                snapshot=MarketSnapshot(
+                    ticker=identity.canonical_ticker,
+                    quote=None,
+                    recent_prices=points,
+                    fetched_at=datetime.now(timezone.utc).isoformat(),
+                    warnings=["Live quote unavailable; historical prices are shown without a current price."],
+                ),
+            )
+
+        self._registry.health(provider.name).record_failure(attempt.status, attempt.detail)
+        if has_quote_snapshot:
             fallback = SourceAttempt(
-                provider=market_source,
+                provider=quote_source,
                 status=SourceStatus.SUCCESS
                 if result.snapshot.recent_prices
                 else SourceStatus.UNAVAILABLE,
@@ -339,10 +378,10 @@ class DataSourceManager:
             self._log(Category.HISTORICAL_PRICE, identity.canonical_ticker, fallback, True)
             result.snapshot.warnings.append(
                 f"historical prices from {provider.name} unavailable "
-                f"({attempt.status.value}); used {market_source}"
+                f"({attempt.status.value}); used {quote_source}"
             )
-
         self._record(Category.HISTORICAL_PRICE, attempts)
+        return result
 
     def _provider_symbol(self, provider: str, identity: CompanyIdentity) -> str:
         """The provider-specific symbol is applied here, at the boundary —

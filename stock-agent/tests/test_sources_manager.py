@@ -458,6 +458,59 @@ async def test_historical_source_is_reported_as_the_provider_that_actually_serve
     assert manager.resolved_source(Category.HISTORICAL_PRICE) == FMP
 
 
+# --- Scenario 6: quote provider fails entirely, but Screener still has historical data ---
+
+
+async def test_historical_data_is_still_fetched_when_every_quote_provider_fails():
+    """A ticker delisted from (or never listed on) yfinance but still
+    tracked on Screener must still get technical/forecast signals --
+    Screener's chart fetch doesn't need a live quote to exist."""
+    yfinance = FakeMarketProvider(_market_error(MarketDataErrorCode.TICKER_NOT_FOUND))
+    screener = FakeHistoricalProvider(points=[_point("2026-09-01", "410"), _point("2026-09-02", "415")])
+    manager = _manager(market={YFINANCE: yfinance}, historical=screener)
+
+    result = await manager.get_snapshot(TICKER)
+
+    assert result.status == "success"
+    assert result.snapshot is not None
+    assert result.snapshot.quote is None
+    assert [p.timestamp for p in result.snapshot.recent_prices] == ["2026-09-01", "2026-09-02"]
+    assert "Live quote unavailable" in result.snapshot.warnings[0]
+
+
+async def test_still_reports_the_original_error_when_both_quote_and_historical_fail():
+    yfinance = FakeMarketProvider(_market_error(MarketDataErrorCode.TICKER_NOT_FOUND))
+    screener = FakeHistoricalProvider(status=SourceStatus.UNAVAILABLE)
+    manager = _manager(market={YFINANCE: yfinance}, historical=screener)
+
+    result = await manager.get_snapshot(TICKER)
+
+    assert result.status == "error"
+    assert screener.calls == 1  # still attempted, just found nothing either
+
+
+async def test_historical_fetch_is_skipped_when_include_recent_prices_is_false_even_on_quote_failure():
+    yfinance = FakeMarketProvider(_market_error(MarketDataErrorCode.TICKER_NOT_FOUND))
+    screener = FakeHistoricalProvider(points=[_point("2026-09-01", "410")])
+    manager = _manager(market={YFINANCE: yfinance}, historical=screener)
+
+    result = await manager.get_snapshot(TICKER, include_recent_prices=False)
+
+    assert result.status == "error"
+    assert screener.calls == 0
+
+
+async def test_no_configured_quote_provider_at_all_still_gets_historical_data():
+    screener = FakeHistoricalProvider(points=[_point("2026-09-01", "410")])
+    manager = _manager(market={}, historical=screener)
+
+    result = await manager.get_snapshot(TICKER)
+
+    assert result.status == "success"
+    assert result.snapshot.quote is None
+    assert len(result.snapshot.recent_prices) == 1
+
+
 def test_primary_source_wins_for_a_shared_date():
     primary = [_point("2026-09-01", "421.50"), _point("2026-09-02", "425.00")]
     secondary = [_point("2026-09-01", "999.99"), _point("2026-09-03", "430.00")]

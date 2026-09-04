@@ -96,6 +96,34 @@ describe('StockLayout', () => {
     await waitFor(() => expect(screen.getByRole('heading', { level: 1, name: /acme corp/i })).toBeInTheDocument())
   })
 
+  it('shows the computing state during a force refresh over an already-ready report, not the stale report', async () => {
+    vi.spyOn(researchApi, 'fetchLatestResearch').mockResolvedValue(
+      buildRunResult(buildReport({ company: { name: 'Acme Corp', ticker: 'ACME', currency: null } })),
+    )
+    let resolveForceRun!: (value: ReturnType<typeof buildRunResult>) => void
+    vi.spyOn(researchApi, 'runResearch').mockReturnValue(new Promise((resolve) => (resolveForceRun = resolve)))
+    vi.spyOn(researchApi, 'fetchResearchProgress').mockResolvedValue({
+      ticker: 'ACME',
+      research_run_id: null,
+      finished: false,
+      stages: [{ key: 'financials', label: 'Fetching financial statements', status: 'running', detail: null }],
+    })
+
+    renderRoute(routes, '/stock/ACME')
+    await waitFor(() => expect(screen.getByRole('heading', { level: 1, name: /acme corp/i })).toBeInTheDocument())
+
+    await userEvent.click(screen.getByRole('button', { name: /force refresh/i }))
+
+    // The stale 'ready' report must not still be on screen once a force
+    // refresh is in flight -- computing must be checked regardless of
+    // state.status, not only for the first-ever-analyze 'empty' case.
+    expect(await screen.findByText('Fetching financial statements')).toBeInTheDocument()
+    expect(screen.queryByRole('heading', { level: 1, name: /acme corp/i })).not.toBeInTheDocument()
+
+    resolveForceRun(buildRunResult(buildReport({ company: { name: 'Acme Corp', ticker: 'ACME', currency: null } })))
+    await waitFor(() => expect(screen.getByRole('heading', { level: 1, name: /acme corp/i })).toBeInTheDocument())
+  })
+
   it('shows a retry affordance, not a dead-end banner, on a 409 (research already running)', async () => {
     vi.spyOn(researchApi, 'fetchLatestResearch').mockResolvedValue(null)
     vi.spyOn(researchApi, 'runResearch').mockRejectedValue(

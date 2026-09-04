@@ -73,14 +73,20 @@ function StockLayoutInner({ ticker }: { ticker: string }) {
     )
   }
 
+  // `computing` covers both a first-ever analyze (state still 'empty')
+  // and a Force Refresh over an already-`'ready'` report -- either way
+  // a real `POST /ticker` research run is in flight, so the same live
+  // stage checklist applies rather than silently refreshing the stale
+  // report underneath the user.
+  if (computing) {
+    return (
+      <main className="mx-auto flex max-w-5xl flex-col gap-8 px-4 pb-32 pt-10 sm:px-6 sm:pb-36">
+        <ResearchProgressPanel ticker={ticker} />
+      </main>
+    )
+  }
+
   if (state.status === 'empty') {
-    if (computing) {
-      return (
-        <main className="mx-auto flex max-w-5xl flex-col gap-8 px-4 pb-32 pt-10 sm:px-6 sm:pb-36">
-          <ResearchProgressPanel ticker={ticker} />
-        </main>
-      )
-    }
     return (
       <main className="mx-auto flex max-w-5xl flex-col items-center gap-6 px-4 pb-32 pt-16 sm:px-6 sm:pb-36">
         <EmptyState title={`${ticker} hasn't been researched yet`} reason="Run research to generate a report." />

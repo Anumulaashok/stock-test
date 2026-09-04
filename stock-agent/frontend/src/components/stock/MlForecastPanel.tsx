@@ -2,13 +2,15 @@ import { useMemo, useState } from 'react'
 import { fetchMlForecast } from '../../api/mlForecast'
 import { useAsync } from '../../hooks/useAsync'
 import { AsyncSection } from '../ui/AsyncSection'
-import { formatCurrency, formatDate, humanizeKey, isSafeHttpUrl } from '../../lib/format'
+import { formatCurrency, humanizeKey } from '../../lib/format'
 import { allHistoricalPrices } from '../ForecastSection'
 import {
   ForecastLineChart,
   type ForecastChartPoint,
   type ForecastLineChartBandPoint,
 } from '../ForecastLineChart'
+import { NewsImpactPanel } from './NewsImpactPanel'
+import { AnalogPanel } from './AnalogPanel'
 import type { ReportHistoricalPricePoint } from '../../types/backend'
 import type { MlForecastResult, MlHorizonForecast, MlHorizonKey } from '../../types/mlForecast'
 
@@ -84,7 +86,7 @@ function HorizonChip({ forecast, active, onSelect }: { forecast: MlHorizonForeca
   )
 }
 
-function DetailsPanel({ forecast, newsImpact }: { forecast: MlHorizonForecast; newsImpact: MlForecastResult['news_impact'] }) {
+function DetailsPanel({ forecast }: { forecast: MlHorizonForecast }) {
   return (
     <div className="flex flex-col gap-4 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] p-4 text-sm">
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
@@ -151,27 +153,6 @@ function DetailsPanel({ forecast, newsImpact }: { forecast: MlHorizonForecast; n
           </div>
         </div>
       )}
-
-      {newsImpact.recent_events.length > 0 && (
-        <div>
-          <div className="mb-1 support-text text-xs uppercase tracking-wide">Recent news</div>
-          <ul className="flex flex-col gap-1.5">
-            {newsImpact.recent_events.slice(0, 5).map((item) => (
-              <li key={`${item.headline}-${item.published_at}`}>
-                {isSafeHttpUrl(item.url) ? (
-                  <a href={item.url} target="_blank" rel="noreferrer" className="hover:underline">
-                    {item.headline}
-                  </a>
-                ) : (
-                  item.headline
-                )}
-                <span className="support-text"> · {humanizeKey(item.event_type)} · {formatDate(item.published_at)}</span>
-              </li>
-            ))}
-          </ul>
-        </div>
-      )}
-      {newsImpact.note && <p className="support-text text-xs">{newsImpact.note}</p>}
     </div>
   )
 }
@@ -201,12 +182,22 @@ function ForecastContent({ result, historicalPoints }: { result: MlForecastResul
         onClick={() => setShowDetails((v) => !v)}
         className="self-start text-xs font-medium text-[var(--color-text-muted)] hover:underline"
       >
-        {showDetails ? 'Hide details' : `Why ${selectedForecast?.horizon ?? ''}? (drivers, model breakdown, news)`}
+        {showDetails ? 'Hide details' : `Why ${selectedForecast?.horizon ?? ''}? (drivers, model breakdown)`}
       </button>
 
-      {showDetails && selectedForecast && <DetailsPanel forecast={selectedForecast} newsImpact={result.news_impact} />}
+      {showDetails && selectedForecast && <DetailsPanel forecast={selectedForecast} />}
 
       <p className="support-text text-xs">Model estimate, not a guaranteed target -- regime: {humanizeKey(result.regime)}.</p>
+
+      {selectedForecast && (
+        <div className="rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] p-4">
+          <AnalogPanel analog={selectedForecast.analog} horizonLabel={selectedForecast.horizon} />
+        </div>
+      )}
+
+      <div className="rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] p-4">
+        <NewsImpactPanel newsImpact={result.news_impact} />
+      </div>
     </div>
   )
 }

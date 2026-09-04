@@ -1,4 +1,4 @@
-import { addWatchlistItem, fetchWatchlist, removeWatchlistItem } from '../api/portfolio'
+import { addWatchlistItem, fetchWatchlistEnriched, removeWatchlistItem } from '../api/portfolio'
 import { AsyncSection } from '../components/ui/AsyncSection'
 import { AddTickerForm } from '../features/watchlist/AddTickerForm'
 import { WatchlistList } from '../features/watchlist/WatchlistList'
@@ -6,12 +6,14 @@ import { useAsync } from '../hooks/useAsync'
 
 /**
  * Extracted from `DashboardPage.tsx`'s inlined `WatchlistTable` +
- * `AddWatchlistForm`. `WatchlistItem` is just `{ ticker, created_at }` --
- * no price/score/delta exists on `GET /api/v1/watchlist` today, so this
- * page only ever renders what the backend actually returns.
+ * `AddWatchlistForm`, now backed by `GET /api/v1/watchlist/enriched`
+ * (price + latest research score per ticker) instead of the bare
+ * `{ ticker, created_at }` `GET /api/v1/watchlist` returns -- both
+ * halves render "Unavailable"/blank, never a fabricated value, when a
+ * ticker has no quote or has never been researched.
  */
 export function WatchlistPage() {
-  const watchlist = useAsync(fetchWatchlist, [])
+  const watchlist = useAsync(fetchWatchlistEnriched, [])
 
   async function handleAdd(ticker: string) {
     await addWatchlistItem(ticker)

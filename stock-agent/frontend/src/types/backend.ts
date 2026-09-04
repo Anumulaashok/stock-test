@@ -592,6 +592,19 @@ export interface WatchlistItem {
   created_at: string
 }
 
+/** `WatchlistItem` plus a live quote and the latest research score --
+ * from `GET /api/v1/watchlist/enriched`. Both halves are independently
+ * optional: a ticker can be watchlisted without ever having been
+ * researched, and a quote can be unavailable while a score is not. */
+export interface WatchlistItemEnriched extends WatchlistItem {
+  current_price: string | null
+  price_status: PriceStatus
+  change_percent: string | null
+  overall_score: string | null
+  band: string | null
+  last_researched_at: string | null
+}
+
 // --- Historical price store / Screener import (app/api/market.py) -------------------
 
 export interface ScreenerImportRequest {

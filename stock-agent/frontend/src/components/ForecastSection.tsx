@@ -5,6 +5,7 @@ import type {
   ReportForecastSection,
   ReportHistoricalPricePoint,
   ReportHorizonForecast,
+  ReportMarketSection,
   ReportTechnicalMethod,
   ReportValuationScenario,
 } from '../types/backend'
@@ -354,6 +355,25 @@ function TechnicalSignalsStrip({ data }: { data: ReportHorizonForecast }) {
   )
 }
 
+/** When the deterministic price-trend line has no data, fall back to the
+ * first calculated technical method (e.g. SMA-crossover momentum) as the
+ * headline "what are we predicting" figure instead of leaving the
+ * summary panel blank -- never fabricated, always labeled with which
+ * method actually produced it, and never `linear_regression` (that IS
+ * the price-trend line; if it were calculated, `lastPoint` above would
+ * already be set). */
+function pickHeadlineMethod(methods: ReportTechnicalMethod[]): ReportTechnicalMethod | null {
+  return methods.find((m) => m.status === 'calculated' && m.method !== 'linear_regression') ?? null
+}
+
+/** True when the backend's own reason for having nothing to show points
+ * at a fixable data gap (insufficient stored price history) rather than
+ * a structural unavailability -- used only to decide whether to add a
+ * pointer to the historical-import tool that actually fixes it. */
+function isFixableWithHistoricalImport(reason: string | null): boolean {
+  return reason !== null && /historical (price|closing price)/i.test(reason)
+}
+
 function ForecastSummaryPanel({
   data,
   currentPrice,
@@ -362,20 +382,34 @@ function ForecastSummaryPanel({
   currentPrice: number | null
 }) {
   const lastPoint = data.price_trend.length > 0 ? data.price_trend[data.price_trend.length - 1] : null
-  const targetValue = lastPoint ? toNumber(lastPoint.projected_price) : null
+  const headlineMethod = lastPoint ? null : pickHeadlineMethod(data.technical_methods)
+  const formattedTarget = lastPoint ? lastPoint.formatted_projected_price : headlineMethod?.formatted_projected_price ?? null
+  const targetValue = lastPoint
+    ? toNumber(lastPoint.projected_price)
+    : headlineMethod
+      ? toNumber(headlineMethod.projected_price)
+      : null
   const potential = percentChange(currentPrice, targetValue)
   const potentialLabel = formatSignedPercent(potential)
+
+  const reason = data.price_trend_reason
+  const showHistoricalImportHint = !lastPoint && !headlineMethod && isFixableWithHistoricalImport(reason)
 
   return (
     <div className="flex flex-col gap-3 rounded-md border border-[var(--color-border)] bg-[var(--color-surface)] p-3">
       <h3 className="text-xs font-semibold uppercase tracking-wide text-[var(--color-text-faint)]">Forecast Summary</h3>
-      {lastPoint ? (
+      {lastPoint || headlineMethod ? (
         <>
           <div>
-            <div className="text-[10px] uppercase tracking-wide text-[var(--color-text-faint)]">Expected</div>
-            <div className="font-mono-nums text-2xl font-semibold text-[var(--color-text)]">
-              {lastPoint.formatted_projected_price ?? 'unavailable'}
+            <div className="text-[10px] uppercase tracking-wide text-[var(--color-text-faint)]">
+              {lastPoint ? 'Expected' : 'Predicted'}
             </div>
+            <div className="font-mono-nums text-2xl font-semibold text-[var(--color-text)]">
+              {formattedTarget ?? 'unavailable'}
+            </div>
+            {headlineMethod && (
+              <div className="mt-0.5 text-[10px] text-[var(--color-text-faint)]">via {humanizeKey(headlineMethod.method)}</div>
+            )}
           </div>
           {potentialLabel && (
             <div>
@@ -387,7 +421,18 @@ function ForecastSummaryPanel({
           )}
         </>
       ) : (
-        <p className="text-xs text-[var(--color-text-faint)]">{data.price_trend_reason ?? 'Forecast unavailable for this horizon.'}</p>
+        <div className="flex flex-col gap-1.5">
+          <p className="text-xs text-[var(--color-text-faint)]">{reason ?? 'Forecast unavailable for this horizon.'}</p>
+          {showHistoricalImportHint && (
+            <p className="text-xs text-[var(--color-text-faint)]">
+              Import this ticker's price history in{' '}
+              <a href="/settings/system" className="font-medium text-[var(--color-accent-strong)] hover:underline">
+                Settings → System
+              </a>{' '}
+              to unlock this.
+            </p>
+          )}
+        </div>
       )}
     </div>
   )
@@ -491,7 +536,13 @@ function HorizonForecastPanel({
   )
 }
 
-export function ForecastSection({ forecast }: { forecast: ReportForecastSection | null }) {
+export function ForecastSection({
+  forecast,
+  market,
+}: {
+  forecast: ReportForecastSection | null
+  market?: ReportMarketSection | null
+}) {
   const [horizon, setHorizon] = useState<ForecastHorizonKey>('daily')
 
   if (!forecast || !forecast.available) {
@@ -509,7 +560,16 @@ export function ForecastSection({ forecast }: { forecast: ReportForecastSection 
     return null
   }
 
-  const currentPrice = toNumber(forecast.current_price)
+  // The forecast pipeline's own quote (`forecast.current_price`) is
+  // fetched independently of `report.market` and can be excluded by
+  // stricter freshness gating (a stale quote is usable for display but
+  // not for valuation) even when the market snapshot has a real price --
+  // falling back to it means the Forecast tab still shows a current
+  // price whenever one exists anywhere in the report, not just when the
+  // forecast stage's own attempt succeeded.
+  const usingMarketFallback = !forecast.current_price && !!market?.current_price
+  const effectiveFormattedCurrentPrice = forecast.formatted_current_price ?? market?.formatted_current_price ?? null
+  const currentPrice = toNumber(forecast.current_price) ?? toNumber(market?.current_price ?? null)
 
   return (
     <section aria-labelledby="forecast-heading" className="flex flex-col gap-5">
@@ -523,10 +583,18 @@ export function ForecastSection({ forecast }: { forecast: ReportForecastSection 
             target.
           </p>
         </div>
-        {forecast.formatted_current_price && (
+        {effectiveFormattedCurrentPrice ? (
           <div className="text-right">
             <div className="text-[10px] uppercase tracking-wide text-[var(--color-text-faint)]">Current</div>
-            <div className="font-mono-nums text-2xl font-semibold text-[var(--color-text)]">{forecast.formatted_current_price}</div>
+            <div className="font-mono-nums text-2xl font-semibold text-[var(--color-text)]">{effectiveFormattedCurrentPrice}</div>
+            {usingMarketFallback && market?.freshness && market.freshness !== 'live' && (
+              <div className="text-[10px] text-[var(--color-text-faint)]">({market.freshness})</div>
+            )}
+          </div>
+        ) : (
+          <div className="text-right">
+            <div className="text-[10px] uppercase tracking-wide text-[var(--color-text-faint)]">Current</div>
+            <div className="text-xs text-[var(--color-text-faint)]">Price unavailable</div>
           </div>
         )}
       </div>

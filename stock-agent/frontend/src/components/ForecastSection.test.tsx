@@ -1,4 +1,4 @@
-import { render, screen, fireEvent } from '@testing-library/react'
+import { render, screen, fireEvent, within } from '@testing-library/react'
 import { describe, it, expect } from 'vitest'
 import { ForecastSection, sampleHistoricalPrices, buildMethodMarkers } from './ForecastSection'
 import { buildReport } from '../test/fixtures'
@@ -211,6 +211,98 @@ describe('ForecastSection', () => {
     expect(screen.queryByRole('tab')).not.toBeInTheDocument()
     // financial projections and DCF scenarios are horizon-independent and still render
     expect(screen.getByText('Valuation Scenarios (DCF)')).toBeInTheDocument()
+  })
+
+  describe('current price', () => {
+    it('shows the forecast pipeline\'s own current price when present', () => {
+      render(<ForecastSection forecast={forecastFixture()} />)
+      expect(screen.getByText('$100.00')).toBeInTheDocument()
+    })
+
+    it('falls back to the market snapshot price when the forecast pipeline has none', () => {
+      render(
+        <ForecastSection
+          forecast={forecastFixture({ current_price: null, formatted_current_price: null })}
+          market={{
+            source: 'yfinance', current_price: '250', previous_close: '245', change: '5', change_percent: '2.04',
+            currency: 'INR', market_status: 'open', market_timestamp: null, freshness: 'delayed',
+            market_cap: null, year_high: null, year_low: null, formatted_current_price: '₹250.00',
+          }}
+        />,
+      )
+      expect(screen.getByText('₹250.00')).toBeInTheDocument()
+      expect(screen.getByText('(delayed)')).toBeInTheDocument()
+    })
+
+    it('shows "Price unavailable" honestly rather than hiding the row when neither source has one', () => {
+      render(<ForecastSection forecast={forecastFixture({ current_price: null, formatted_current_price: null })} market={null} />)
+      expect(screen.getByText('Price unavailable')).toBeInTheDocument()
+    })
+  })
+
+  describe('predicted price when the deterministic trend is unavailable', () => {
+    function unavailableTrendFixture(technicalMethods: ReportTechnicalMethod[]) {
+      return forecastFixture({
+        horizons: {
+          daily: horizonFixture({
+            price_trend: [],
+            price_trend_status: 'unavailable',
+            price_trend_reason: 'at least 5 historical price points are required',
+            technical_methods: technicalMethods,
+          }),
+          weekly: horizonFixture({ price_trend: [] }),
+          monthly: horizonFixture({ price_trend: [] }),
+        },
+      })
+    }
+
+    it('promotes the first calculated technical method into the headline "Predicted" figure', () => {
+      const forecast = unavailableTrendFixture([
+        {
+          method: 'sma_crossover_momentum', description: 'Momentum drift.', projected_price: '112',
+          projection_days: 5, horizon: 'daily', horizon_period: 5, projected_date: '2026-09-05',
+          status: 'calculated', reason: null, formatted_projected_price: '$112.00',
+        },
+      ])
+      render(<ForecastSection forecast={forecast} />)
+
+      const summaryPanel = screen.getByText('Forecast Summary').closest('div') as HTMLElement
+      expect(within(summaryPanel).getByText('Predicted')).toBeInTheDocument()
+      expect(within(summaryPanel).getByText('$112.00')).toBeInTheDocument()
+      expect(within(summaryPanel).getByText(/via Sma Crossover Momentum/i)).toBeInTheDocument()
+    })
+
+    it('shows an honest "unavailable" summary, plus a historical-import hint, when no method is calculated either', () => {
+      const forecast = unavailableTrendFixture([
+        {
+          method: 'sma_50', description: '50-day SMA', projected_price: null, projection_days: 5,
+          horizon: 'daily', horizon_period: 5, projected_date: null,
+          status: 'unavailable', reason: 'at least 50 historical closing prices are required (found 0)',
+          formatted_projected_price: null,
+        },
+      ])
+      render(<ForecastSection forecast={forecast} />)
+
+      expect(screen.queryByText('Predicted')).not.toBeInTheDocument()
+      expect(screen.getByText('at least 5 historical price points are required')).toBeInTheDocument()
+      expect(screen.getByRole('link', { name: /settings.*system/i })).toHaveAttribute('href', '/settings/system')
+    })
+
+    it('does not show the historical-import hint for a reason unrelated to missing price history', () => {
+      const forecast = forecastFixture({
+        horizons: {
+          daily: horizonFixture({
+            price_trend: [], price_trend_status: 'unavailable',
+            price_trend_reason: 'current price is unavailable', technical_methods: [],
+          }),
+          weekly: horizonFixture({ price_trend: [] }),
+          monthly: horizonFixture({ price_trend: [] }),
+        },
+      })
+      render(<ForecastSection forecast={forecast} />)
+
+      expect(screen.queryByRole('link', { name: /settings.*system/i })).not.toBeInTheDocument()
+    })
   })
 })
 

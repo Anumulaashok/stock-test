@@ -3,5 +3,5 @@ import { ForecastSection } from '../../components/ForecastSection'
 
 export function ForecastTab() {
   const { report } = useStockReport()
-  return <ForecastSection forecast={report.forecast} />
+  return <ForecastSection forecast={report.forecast} market={report.market} />
 }

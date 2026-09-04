@@ -8,7 +8,12 @@ import type {
   ReportTechnicalMethod,
 } from '../types/backend'
 import { humanizeKey } from '../lib/format'
-import { ForecastLineChart, type ForecastLineChartMarker, type ForecastLineChartReferenceLine, type ForecastLineChartSeries } from './ForecastLineChart'
+import {
+  ForecastLineChart,
+  type ForecastChartPoint,
+  type ForecastLineChartMarker,
+  type ForecastLineChartReferenceLine,
+} from './ForecastLineChart'
 
 const METHOD_COLORS = ['#2952a3', '#b5540a', '#3a6b35', '#8a6d00', '#7a3ab3']
 
@@ -18,72 +23,53 @@ const HORIZON_TABS: { key: ForecastHorizonKey; label: string }[] = [
   { key: 'monthly', label: 'Monthly' },
 ]
 
-// How many trailing historical closes to sample per horizon, and the
-// stride used to downsample daily closes into weekly/monthly points --
-// this is a purely presentational sampling of already-computed closes
-// (never a new calculated value) so the historical segment lines up on
-// the same period axis as that horizon's forecast points.
-const HORIZON_HISTORY_STEP: Record<ForecastHorizonKey, number> = { daily: 1, weekly: 5, monthly: 21 }
-const HORIZON_HISTORY_MAX_POINTS: Record<ForecastHorizonKey, number> = { daily: 30, weekly: 12, monthly: 12 }
-
 function toNumber(value: string | null): number | null {
   if (value === null) return null
   const n = Number(value)
   return Number.isFinite(n) ? n : null
 }
 
-/** Downsamples already-observed closing prices into one point per
- * period, ending at period -1 (the period immediately before the
- * forecast's period 0/"today" anchor). Pure and presentation-only --
- * it never fabricates a value, only picks which already-computed
- * closes to plot. Exported for unit testing. */
-export function sampleHistoricalPrices(
-  historicalPrices: ReportHistoricalPricePoint[],
-  horizon: ForecastHorizonKey,
-): { day: number; value: number }[] {
-  return sampleHistoricalPoints(historicalPrices, horizon).map(({ day, value }) => ({ day, value }))
+/** Every already-observed closing price, chronologically -- the full
+ * history, never sampled or capped, so the chart shows all old data
+ * alongside the prediction. Pure and presentation-only: it never
+ * fabricates a value, only reshapes what the backend already computed.
+ * Exported for unit testing. */
+export function allHistoricalPrices(historicalPrices: ReportHistoricalPricePoint[]): ForecastChartPoint[] {
+  return historicalPrices
+    .map((p) => ({ date: p.date, value: toNumber(p.close) }))
+    .filter((p): p is ForecastChartPoint => p.value !== null)
+    .sort((a, b) => a.date.localeCompare(b.date))
 }
 
-/** Same sampling as `sampleHistoricalPrices`, but keeps each point's
- * real calendar date alongside it (dropped by the function above to
- * keep its existing tested shape) -- used only to label the chart's
- * x-axis with actual dates instead of relative day offsets. */
-function sampleHistoricalPoints(
-  historicalPrices: ReportHistoricalPricePoint[],
-  horizon: ForecastHorizonKey,
-): { day: number; value: number; date: string | null }[] {
-  const closes = historicalPrices
-    .map((p) => ({ date: p.date, value: toNumber(p.close) }))
-    .filter((p): p is { date: string; value: number } => p.value !== null)
-  if (closes.length === 0) return []
-
-  const step = HORIZON_HISTORY_STEP[horizon]
-  const maxPoints = HORIZON_HISTORY_MAX_POINTS[horizon]
-
-  // Sample every `step`-th close counting backward from the most recent
-  // one (so the most recent close is always included), capped at
-  // `maxPoints`, then restore chronological order.
-  const sampled: { value: number; date: string | null }[] = []
-  for (let i = closes.length - 1; i >= 0 && sampled.length < maxPoints; i -= step) {
-    sampled.push(closes[i])
-  }
-  sampled.reverse()
-
-  return sampled.map((point, index) => ({ day: index - sampled.length, value: point.value, date: point.date }))
+/** The selected horizon's predicted points (already period-appropriate
+ * -- daily/weekly/monthly-spaced, decided by the backend, never by this
+ * component), bridged from "today" so the predicted line visually
+ * connects to where the historical line ends. Exported for testing. */
+export function predictedPrices(
+  data: ReportHorizonForecast,
+  currentPrice: number | null,
+  todayDate: string | null,
+): ForecastChartPoint[] {
+  const trend = data.price_trend
+    .map((point) => (point.date && toNumber(point.projected_price) !== null ? { date: point.date, value: toNumber(point.projected_price) as number } : null))
+    .filter((p): p is ForecastChartPoint => p !== null)
+  // A lone "today" bridge point with no actual future predictions isn't
+  // a forecast line -- only prepend it when there's a real point to
+  // draw a line to.
+  if (trend.length === 0 || currentPrice === null || todayDate === null) return trend
+  return [{ date: todayDate, value: currentPrice }, ...trend]
 }
 
 /** Builds one chart marker per non-trend technical method, positioned
- * at that method's `horizon_period` -- the same unit the price-trend
- * series' `period` field uses -- so a method's marker lines up with
- * the trend line regardless of horizon. Exported for unit testing. */
+ * at that method's own `projected_date` -- exported for unit testing. */
 export function buildMethodMarkers(methods: ReportTechnicalMethod[]): ForecastLineChartMarker[] {
   const otherMethods = methods.filter((m) => m.method !== 'linear_regression' && m.status === 'calculated')
   return otherMethods
     .map((m, i) => {
       const value = toNumber(m.projected_price)
-      return value === null
+      return value === null || !m.projected_date
         ? null
-        : { label: humanizeKey(m.method), day: m.horizon_period, value, color: METHOD_COLORS[(i + 1) % METHOD_COLORS.length] }
+        : { label: humanizeKey(m.method), date: m.projected_date, value, color: METHOD_COLORS[(i + 1) % METHOD_COLORS.length] }
     })
     .filter((m): m is ForecastLineChartMarker => m !== null)
 }
@@ -188,29 +174,13 @@ function HorizonChart({
   const [showSma, setShowSma] = useState(true)
   const [showMethods, setShowMethods] = useState(true)
 
-  const trendPoints = data.price_trend
-    .map((point) => ({ day: point.period, value: toNumber(point.projected_price) }))
-    .filter((p): p is { day: number; value: number } => p.value !== null)
-  // A lone "today" point with no actual future predictions isn't a
-  // forecast trend line -- only prepend it when there's at least one
-  // real projected point to draw a line to.
-  const forecastSeriesPoints = trendPoints.length > 0 && currentPrice !== null
-    ? [{ day: 0, value: currentPrice }, ...trendPoints]
-    : trendPoints
-  const historicalPoints = sampleHistoricalPoints(historicalPrices, data.horizon)
-  const historicalSeriesPoints = historicalPoints.map(({ day, value }) => ({ day, value }))
-
-  // Real calendar date for every plotted day, so the chart's x-axis
-  // reads "Sep 4" instead of an abstract "+3" offset -- built from the
-  // same already-computed dates the historical/forecast points carry,
-  // never a new date calculation.
-  const dateLabels: Record<number, string> = {}
-  historicalPoints.forEach((p) => {
-    if (p.date) dateLabels[p.day] = p.date
-  })
-  data.price_trend.forEach((p) => {
-    if (p.date) dateLabels[p.period] = p.date
-  })
+  const historical = allHistoricalPrices(historicalPrices)
+  // The bridge point (today's current price) is plotted on the same
+  // date the historical line ends -- both series having a point there
+  // is what visually connects them into one continuous line, without
+  // guessing what "today" actually is from the forecast's own dates.
+  const lastHistoricalDate = historical.length > 0 ? historical[historical.length - 1].date : null
+  const predicted = predictedPrices(data, currentPrice, lastHistoricalDate)
 
   const methodMarkers = showMethods ? buildMethodMarkers(data.technical_methods) : []
 
@@ -225,19 +195,12 @@ function HorizonChart({
         .filter((r): r is ForecastLineChartReferenceLine => r !== null)
     : []
 
-  const series: ForecastLineChartSeries[] = []
-  if (historicalSeriesPoints.length > 0) {
-    series.push({ label: 'Historical', color: '#9ca3af', points: historicalSeriesPoints })
-  }
-  if (forecastSeriesPoints.length > 0) {
-    series.push({ label: 'Forecast trend', color: '#2952a3', points: forecastSeriesPoints, dashed: true, area: true })
-  }
-  const hasChart = series.length > 0 || methodMarkers.length > 0
+  const hasChart = historical.length > 0 || predicted.length > 0 || methodMarkers.length > 0
   // Distinct from `hasChart`: a chart showing only already-observed
   // historical prices, with no predicted point or marker at all, isn't
   // actually a forecast -- still worth showing (real data), but paired
   // with an honest note instead of implying a prediction exists.
-  const hasPrediction = forecastSeriesPoints.length > 0 || methodMarkers.length > 0
+  const hasPrediction = predicted.length > 0 || methodMarkers.length > 0
 
   const reason = data.price_trend_reason
   const showHistoricalImportHint = !hasPrediction && isFixableWithHistoricalImport(reason)
@@ -249,12 +212,12 @@ function HorizonChart({
         {hasChart && (
           <div className="flex items-center gap-3">
             <div className="hidden items-center gap-3 text-[10px] text-[var(--color-text-faint)] sm:flex">
-              {historicalSeriesPoints.length > 0 && (
+              {historical.length > 0 && (
                 <span className="flex items-center gap-1">
                   <span className="inline-block h-0.5 w-3 rounded-full" style={{ background: '#9ca3af' }} /> Historical
                 </span>
               )}
-              {forecastSeriesPoints.length > 0 && (
+              {predicted.length > 0 && (
                 <span className="flex items-center gap-1">
                   <span className="inline-block h-0.5 w-3 rounded-full" style={{ background: '#2952a3' }} /> Predicted
                 </span>
@@ -266,7 +229,7 @@ function HorizonChart({
       </div>
 
       {hasChart ? (
-        <ForecastLineChart series={series} markers={methodMarkers} referenceLines={referenceLines} dateLabels={dateLabels} />
+        <ForecastLineChart historical={historical} predicted={predicted} markers={methodMarkers} referenceLines={referenceLines} />
       ) : (
         <div className="flex flex-col items-center gap-1.5 py-10 text-center">
           <p className="text-xs text-[var(--color-text-faint)]">{reason ?? 'No chartable data for this horizon.'}</p>

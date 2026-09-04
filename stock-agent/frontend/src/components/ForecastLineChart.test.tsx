@@ -1,5 +1,6 @@
+import { render, screen } from '@testing-library/react'
 import { describe, expect, it } from 'vitest'
-import { formatAxisDate } from './ForecastLineChart'
+import { ForecastLineChart, formatAxisDate } from './ForecastLineChart'
 
 describe('formatAxisDate', () => {
   it('formats a plain date', () => {
@@ -22,5 +23,42 @@ describe('formatAxisDate', () => {
 
   it('falls back to the raw string for something genuinely unparseable', () => {
     expect(formatAxisDate('not-a-date')).toBe('not-a-date')
+  })
+})
+
+describe('ForecastLineChart', () => {
+  it('renders a canvas inside a labeled image container without throwing', () => {
+    render(
+      <ForecastLineChart
+        historical={[
+          { date: '2026-08-25', value: 98 },
+          { date: '2026-08-26', value: 99 },
+        ]}
+        predicted={[
+          { date: '2026-08-26', value: 99 },
+          { date: '2026-08-27', value: 101 },
+        ]}
+      />,
+    )
+    const container = screen.getByRole('img', { name: /forecast price chart/i })
+    expect(container.querySelector('canvas')).toBeInTheDocument()
+  })
+
+  it('renders with markers and reference lines and does not throw', () => {
+    render(
+      <ForecastLineChart
+        historical={[{ date: '2026-08-25', value: 98 }]}
+        predicted={[]}
+        markers={[{ label: 'SMA crossover', date: '2026-08-26', value: 100, color: '#b5540a' }]}
+        referenceLines={[{ label: '50-day SMA', value: 97, color: '#8a6d00' }]}
+      />,
+    )
+    expect(screen.getByRole('img', { name: /forecast price chart/i })).toBeInTheDocument()
+  })
+
+  it('re-renders cleanly when data changes (destroys and recreates the chart instance)', () => {
+    const { rerender } = render(<ForecastLineChart historical={[{ date: '2026-08-25', value: 98 }]} predicted={[]} />)
+    rerender(<ForecastLineChart historical={[{ date: '2026-08-26', value: 99 }]} predicted={[]} />)
+    expect(screen.getByRole('img', { name: /forecast price chart/i })).toBeInTheDocument()
   })
 })

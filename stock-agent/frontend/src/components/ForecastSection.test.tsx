@@ -1,6 +1,6 @@
 import { render, screen, fireEvent } from '@testing-library/react'
 import { describe, it, expect } from 'vitest'
-import { ForecastSection, sampleHistoricalPrices, buildMethodMarkers } from './ForecastSection'
+import { ForecastSection, allHistoricalPrices, buildMethodMarkers, predictedPrices } from './ForecastSection'
 import type {
   ReportForecastSection,
   ReportHistoricalPricePoint,
@@ -284,66 +284,84 @@ describe('ForecastSection', () => {
   })
 })
 
-describe('sampleHistoricalPrices', () => {
+describe('allHistoricalPrices', () => {
   it('returns an empty array when there is no usable close', () => {
-    expect(sampleHistoricalPrices([], 'daily')).toEqual([])
-    expect(sampleHistoricalPrices([{ date: '2026-08-25', close: null, formatted_close: null }], 'daily')).toEqual([])
+    expect(allHistoricalPrices([])).toEqual([])
+    expect(allHistoricalPrices([{ date: '2026-08-25', close: null, formatted_close: null }])).toEqual([])
   })
 
-  it('daily takes every trailing close, ending at day -1', () => {
-    const points = sampleHistoricalPrices(HISTORICAL_PRICES, 'daily')
-    expect(points).toEqual([
-      { day: -3, value: 98 },
-      { day: -2, value: 99 },
-      { day: -1, value: 100 },
+  it('returns every usable close, chronologically -- never sampled or capped', () => {
+    expect(allHistoricalPrices(HISTORICAL_PRICES)).toEqual([
+      { date: '2026-08-25', value: 98 },
+      { date: '2026-08-26', value: 99 },
+      { date: '2026-08-27', value: 100 },
     ])
   })
 
-  it('weekly samples every 5th close counting backward, most recent always included', () => {
-    const prices: ReportHistoricalPricePoint[] = Array.from({ length: 12 }, (_, i) => ({
-      date: `2026-08-${String(i + 1).padStart(2, '0')}`,
-      close: String(100 + i),
-      formatted_close: null,
-    }))
-    const points = sampleHistoricalPrices(prices, 'weekly')
-    expect(points[points.length - 1]).toEqual({ day: -1, value: 111 })
-  })
-
-  it('caps the point count at the horizon maximum (12 for monthly)', () => {
+  it('does not cap out at any fixed count, however much history exists', () => {
     const prices: ReportHistoricalPricePoint[] = Array.from({ length: 500 }, (_, i) => ({
-      date: `d${i}`,
+      date: `2024-01-${String((i % 28) + 1).padStart(2, '0')}`,
       close: String(i),
       formatted_close: null,
     }))
-    const points = sampleHistoricalPrices(prices, 'monthly')
-    expect(points.length).toBe(12)
+    expect(allHistoricalPrices(prices).length).toBe(500)
+  })
+})
+
+describe('predictedPrices', () => {
+  it('returns nothing when there is no calculated trend', () => {
+    const data = horizonFixture({ price_trend: [] })
+    expect(predictedPrices(data, 100, '2026-08-27')).toEqual([])
+  })
+
+  it('bridges from the given anchor date/price into the trend', () => {
+    const data = horizonFixture({
+      price_trend: [{ period: 1, day_offset: 1, date: '2026-08-28', projected_price: '101', formatted_projected_price: '$101.00' }],
+    })
+    expect(predictedPrices(data, 100, '2026-08-27')).toEqual([
+      { date: '2026-08-27', value: 100 },
+      { date: '2026-08-28', value: 101 },
+    ])
+  })
+
+  it('skips the bridge point when there is no current price or anchor date', () => {
+    const data = horizonFixture({
+      price_trend: [{ period: 1, day_offset: 1, date: '2026-08-28', projected_price: '101', formatted_projected_price: '$101.00' }],
+    })
+    expect(predictedPrices(data, null, '2026-08-27')).toEqual([{ date: '2026-08-28', value: 101 }])
+    expect(predictedPrices(data, 100, null)).toEqual([{ date: '2026-08-28', value: 101 }])
   })
 })
 
 describe('buildMethodMarkers', () => {
-  it('positions each marker at the method horizon_period, not projection_days', () => {
+  it('positions each marker at the method own projected_date', () => {
     const methods: ReportTechnicalMethod[] = [
       {
         method: 'sma_crossover_momentum', description: '', projected_price: '112', projection_days: 60,
-        horizon: 'weekly', horizon_period: 12, projected_date: null, status: 'calculated', reason: null,
+        horizon: 'weekly', horizon_period: 12, projected_date: '2026-11-16', status: 'calculated', reason: null,
         formatted_projected_price: '$112.00',
       },
     ]
     const markers = buildMethodMarkers(methods)
-    expect(markers).toEqual([{ label: 'Sma Crossover Momentum', day: 12, value: 112, color: '#b5540a' }])
+    expect(markers).toEqual([{ label: 'Sma Crossover Momentum', date: '2026-11-16', value: 112, color: '#b5540a' }])
   })
 
-  it('excludes linear_regression (already the trend line) and non-calculated methods', () => {
+  it('excludes linear_regression (already the trend line), non-calculated methods, and a missing date', () => {
     const methods: ReportTechnicalMethod[] = [
       {
         method: 'linear_regression', description: '', projected_price: '100', projection_days: 5,
-        horizon: 'daily', horizon_period: 5, projected_date: null, status: 'calculated', reason: null,
+        horizon: 'daily', horizon_period: 5, projected_date: '2026-09-05', status: 'calculated', reason: null,
         formatted_projected_price: '$100.00',
       },
       {
         method: 'sma_50', description: '', projected_price: null, projection_days: 5,
         horizon: 'daily', horizon_period: 5, projected_date: null, status: 'unavailable', reason: 'n/a',
         formatted_projected_price: null,
+      },
+      {
+        method: 'rate_of_change_momentum', description: '', projected_price: '110', projection_days: 5,
+        horizon: 'daily', horizon_period: 5, projected_date: null, status: 'calculated', reason: null,
+        formatted_projected_price: '$110.00',
       },
     ]
     expect(buildMethodMarkers(methods)).toEqual([])

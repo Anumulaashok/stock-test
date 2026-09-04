@@ -3,6 +3,7 @@ import { StockReportProvider, useStockReportState } from '../stock/StockReportCo
 import { useWatchlistMembership } from '../hooks/useWatchlistMembership'
 import { paths } from '../routes/paths'
 import { LoadingState } from '../components/LoadingState'
+import { ResearchProgressPanel } from '../components/ResearchProgressPanel'
 import { ErrorBanner } from '../components/ErrorBanner'
 import { StatusBanner } from '../components/StatusBanner'
 import { EmptyState } from '../components/SectionHeader'
@@ -35,7 +36,7 @@ export function StockLayout() {
 }
 
 function StockLayoutInner({ ticker }: { ticker: string }) {
-  const { state, refreshing, runNew, reload } = useStockReportState()
+  const { state, refreshing, computing, runNew, reload } = useStockReportState()
   const watchlist = useWatchlistMembership(ticker)
 
   if (state.status === 'loading') {
@@ -73,11 +74,18 @@ function StockLayoutInner({ ticker }: { ticker: string }) {
   }
 
   if (state.status === 'empty') {
+    if (computing) {
+      return (
+        <main className="mx-auto flex max-w-5xl flex-col gap-8 px-4 pb-32 pt-10 sm:px-6 sm:pb-36">
+          <ResearchProgressPanel ticker={ticker} />
+        </main>
+      )
+    }
     return (
       <main className="mx-auto flex max-w-5xl flex-col items-center gap-6 px-4 pb-32 pt-16 sm:px-6 sm:pb-36">
         <EmptyState title={`${ticker} hasn't been researched yet`} reason="Run research to generate a report." />
         <button type="button" onClick={() => void runNew()} disabled={refreshing} className="btn-primary px-4 py-2">
-          {refreshing ? 'Running research…' : 'Run research'}
+          Run research
         </button>
       </main>
     )

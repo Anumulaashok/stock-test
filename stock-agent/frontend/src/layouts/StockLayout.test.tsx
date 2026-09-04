@@ -75,6 +75,27 @@ describe('StockLayout', () => {
     expect(fundamentalsLink).toHaveAttribute('href', expect.stringContaining('run=run-42'))
   })
 
+  it('shows the real progress panel, not just a spinner, while Run research is in flight', async () => {
+    vi.spyOn(researchApi, 'fetchLatestResearch').mockResolvedValue(null)
+    let resolveRun!: (value: ReturnType<typeof buildRunResult>) => void
+    vi.spyOn(researchApi, 'runResearch').mockReturnValue(new Promise((resolve) => (resolveRun = resolve)))
+    vi.spyOn(researchApi, 'fetchResearchProgress').mockResolvedValue({
+      ticker: 'ACME',
+      research_run_id: null,
+      finished: false,
+      stages: [{ key: 'financials', label: 'Fetching financial statements', status: 'running', detail: null }],
+    })
+
+    renderRoute(routes, '/stock/ACME')
+    await waitFor(() => expect(screen.getByRole('button', { name: /run research/i })).toBeInTheDocument())
+    await userEvent.click(screen.getByRole('button', { name: /run research/i }))
+
+    expect(await screen.findByText('Fetching financial statements')).toBeInTheDocument()
+
+    resolveRun(buildRunResult(buildReport({ company: { name: 'Acme Corp', ticker: 'ACME', currency: null } })))
+    await waitFor(() => expect(screen.getByRole('heading', { level: 1, name: /acme corp/i })).toBeInTheDocument())
+  })
+
   it('shows a retry affordance, not a dead-end banner, on a 409 (research already running)', async () => {
     vi.spyOn(researchApi, 'fetchLatestResearch').mockResolvedValue(null)
     vi.spyOn(researchApi, 'runResearch').mockRejectedValue(

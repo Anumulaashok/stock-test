@@ -38,13 +38,16 @@ from app.models.research_run import (
     ForecastHorizonKey,
     ForecastSnapshotEntry,
     RecentResearchEntry,
+    ResearchProgress,
     ResearchRunRequest,
     ResearchRunResult,
     ResearchRunStatus,
     ResearchRunSummary,
     ResearchRunType,
+    ResearchStage,
 )
 from app.pipeline.models import CombinedAnalysisResult, PipelineCompanyInfo, PipelineStatus
+from app.snapshot import progress as progress_module
 from app.snapshot.service import overlay_fresh_quote
 from app.snapshot.exceptions import ResearchInProgressError
 
@@ -191,6 +194,32 @@ async def get_latest_research(
     # like every other quote fetch in this app.
     manager = build_data_source_manager(settings, db)
     return await overlay_fresh_quote(manager, result, ticker)
+
+
+@router.get("/{ticker}/progress")
+async def get_research_progress(ticker: str) -> ResearchProgress:
+    """Real, best-effort stage-by-stage status for an in-flight (or
+    just-finished) `POST /ticker` call for this ticker -- see
+    `app.snapshot.progress`. Meant to be polled by a client that already
+    has a `POST /ticker` request in flight for the same ticker; never
+    triggers or blocks on anything itself. 404 when nothing is known
+    (never started in this process, or the process restarted since) --
+    the frontend falls back to a plain indeterminate loading state in
+    that case, not an error.
+    """
+    ticker = _normalize(ticker)
+    run_progress = progress_module.get(ticker)
+    if run_progress is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"No research progress known for {ticker}.")
+    return ResearchProgress(
+        ticker=run_progress.ticker,
+        research_run_id=run_progress.research_run_id,
+        finished=run_progress.finished,
+        stages=[
+            ResearchStage(key=s.key, label=s.label, status=s.status.value, detail=s.detail)
+            for s in run_progress.stages
+        ],
+    )
 
 
 @router.get("/{ticker}/history")

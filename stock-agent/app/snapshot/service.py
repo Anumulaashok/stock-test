@@ -58,6 +58,7 @@ from app.models.research_run import (
 )
 from app.pipeline.models import CombinedAnalysisResult, PipelineStatus, ResearchOptions, TickerAnalysisRequest
 from app.reporting.service import ReportService
+from app.snapshot import progress as progress_module
 from app.snapshot.exceptions import ResearchInProgressError
 from app.snapshot.hashing import compute_input_hash
 from app.snapshot.versions import CALCULATION_VERSION, DATA_VERSION, FORECAST_VERSION, PROMPT_VERSION
@@ -174,15 +175,35 @@ class ResearchSnapshotService:
         if request.force_refresh:
             logger.info("force_refresh_started research_run_id=%s ticker=%s", run_row.id, ticker)
 
+        # Real, best-effort progress reporting for this exact run -- see
+        # `app.snapshot.progress`'s module docstring for why this is
+        # honest (each stage below is an already-distinct `await`
+        # boundary in this method, not a fabricated checklist) and why
+        # it's in-memory rather than persisted.
+        progress = progress_module.start(ticker)
+        progress_module.begin_stage(progress, "financials")
         company_financials, financial_fetch_result = await self._capture_raw_financial(db, run_row, ticker)
+        if financial_fetch_result is not None and financial_fetch_result.status == "success":
+            progress_module.complete_stage(progress, "financials")
+        else:
+            # Soft failure -- the pipeline still runs on whatever it has
+            # (see `AnalysisApplicationService.analyze_by_ticker`), so
+            # this never ends the run on its own.
+            progress_module.fail_stage(progress, "financials", detail="Financial data unavailable")
+
         if self._market_data_service is not None:
+            progress_module.begin_stage(progress, "market")
             await self._capture_raw_market(db, run_row, ticker, request.include_price_trend_forecast)
+            progress_module.complete_stage(progress, "market")
+        else:
+            progress_module.skip_stage(progress, "market", detail="No market data provider configured")
 
         ticker_request = TickerAnalysisRequest(
             ticker=ticker,
             include_price_trend_forecast=request.include_price_trend_forecast,
             research=ResearchOptions(enabled=request.research_enabled),
         )
+        progress_module.begin_stage(progress, "analysis")
         # Reuse the same fetch raw capture just made -- avoids a second,
         # independent /stock (or /historical_stats fallback) round-trip
         # for the same ticker within one research request.
@@ -192,26 +213,41 @@ class ResearchSnapshotService:
 
         if combined.status == PipelineStatus.FAILED:
             error_message = "; ".join(combined.warnings) or "Research failed for an unknown reason."
+            progress_module.fail_stage(progress, "analysis", detail=error_message)
+            for key in ("analyst", "report", "saving"):
+                progress_module.skip_stage(progress, key)
             await self._mark_failed(db, run_row, error_message)
             logger.warning("research_failed research_run_id=%s ticker=%s reason=%s", run_row.id, ticker, error_message)
+            progress_module.finish(progress, research_run_id=run_row.id)
             return ResearchRunResult(
                 research_run_id=run_row.id, ticker=ticker, research_date=today, run_type=run_type,
                 status=ResearchRunStatus.FAILED, is_new_run=True,
                 started_at=run_row.started_at, completed_at=run_row.completed_at, result=combined,
             )
+        progress_module.complete_stage(progress, "analysis")
 
         await self._save_analysis_snapshot(db, run_row, combined)
         if combined.forecast is not None:
             await self._save_forecast_snapshots(db, run_row, ticker, today, combined.forecast)
 
+        progress_module.begin_stage(progress, "analyst")
         analyst_result = await self._resolve_analyst(
             db, run_row, ticker, combined, company_financials, request.force_refresh
         )
         final_status = PipelineStatus.CALCULATED if analyst_result.status == "success" else PipelineStatus.PARTIAL
+        if analyst_result.status == "success":
+            progress_module.complete_stage(progress, "analyst")
+        else:
+            error = analyst_result.error
+            progress_module.fail_stage(progress, "analyst", detail=error.message if error else "AI analyst unavailable")
         combined = combined.model_copy(update={"analyst": analyst_result, "status": final_status})
 
+        progress_module.begin_stage(progress, "report")
         report = ReportService().generate(combined)
         combined = combined.model_copy(update={"report": report})
+        progress_module.complete_stage(progress, "report")
+
+        progress_module.begin_stage(progress, "saving")
         await self._save_report_snapshot(db, run_row, ticker, today, combined)
 
         run_row.status = (
@@ -219,6 +255,8 @@ class ResearchSnapshotService:
         ).value
         run_row.completed_at = self._clock()
         await db.commit()
+        progress_module.complete_stage(progress, "saving")
+        progress_module.finish(progress, research_run_id=run_row.id)
 
         logger.info("research_run_completed research_run_id=%s ticker=%s status=%s", run_row.id, ticker, run_row.status)
         if request.force_refresh:

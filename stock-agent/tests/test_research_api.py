@@ -175,6 +175,60 @@ def test_get_latest_research_404_when_none_exists():
     assert response.status_code == 404
 
 
+# --- GET /{ticker}/progress -------------------------------------------------------------
+
+
+def test_progress_is_404_before_any_run_has_ever_started_for_the_ticker():
+    response = client.get("/api/v1/research/NEVERPOLLED/progress")
+    assert response.status_code == 404
+
+
+@respx.mock
+def test_progress_reflects_every_real_stage_after_a_completed_run(monkeypatch):
+    _set_env(monkeypatch)
+    _mock_fmp_success()
+    _mock_llm_success()
+
+    get_settings.cache_clear()
+    try:
+        client.post("/api/v1/research/ticker", json={"ticker": "ACME"})
+        body = client.get("/api/v1/research/ACME/progress").json()
+
+        assert body["finished"] is True
+        assert body["research_run_id"]
+        stages_by_key = {s["key"]: s for s in body["stages"]}
+        assert set(stages_by_key) == {"financials", "market", "analysis", "analyst", "report", "saving"}
+        assert stages_by_key["financials"]["status"] == "success"
+        assert stages_by_key["analysis"]["status"] == "success"
+        assert stages_by_key["analyst"]["status"] == "success"
+        assert stages_by_key["report"]["status"] == "success"
+        assert stages_by_key["saving"]["status"] == "success"
+    finally:
+        get_settings.cache_clear()
+
+
+@respx.mock
+def test_progress_marks_analysis_failed_and_skips_the_remaining_stages_on_a_failed_run(monkeypatch):
+    _set_env(monkeypatch)
+    respx.get(f"{FMP_BASE}/income-statement").mock(return_value=httpx.Response(200, json=[]))
+    respx.get(f"{FMP_BASE}/balance-sheet-statement").mock(return_value=httpx.Response(200, json=[]))
+    respx.get(f"{FMP_BASE}/cash-flow-statement").mock(return_value=httpx.Response(200, json=[]))
+
+    get_settings.cache_clear()
+    try:
+        client.post("/api/v1/research/ticker", json={"ticker": "NOTATICKER"})
+        body = client.get("/api/v1/research/NOTATICKER/progress").json()
+
+        assert body["finished"] is True
+        stages_by_key = {s["key"]: s for s in body["stages"]}
+        assert stages_by_key["analysis"]["status"] == "failed"
+        assert stages_by_key["analyst"]["status"] == "skipped"
+        assert stages_by_key["report"]["status"] == "skipped"
+        assert stages_by_key["saving"]["status"] == "skipped"
+    finally:
+        get_settings.cache_clear()
+
+
 # --- GET /{ticker} overlays a live quote (opening a stock must never show a stale price) ---
 
 _FRESH_QUOTE = {

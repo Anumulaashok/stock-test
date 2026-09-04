@@ -446,6 +446,26 @@ export interface RecentResearchEntry {
   completed_at: string | null
 }
 
+export type ResearchStageStatusKey = 'pending' | 'running' | 'success' | 'failed' | 'skipped'
+
+export interface ResearchStage {
+  key: string
+  label: string
+  status: ResearchStageStatusKey
+  detail: string | null
+}
+
+/** Real, best-effort progress for an in-flight (or just-finished)
+ * research run -- see `app/snapshot/progress.py`. Polled from
+ * `GET /api/v1/research/{ticker}/progress` while a `POST /ticker` call
+ * is in flight for the same ticker. */
+export interface ResearchProgress {
+  ticker: string
+  research_run_id: string | null
+  finished: boolean
+  stages: ResearchStage[]
+}
+
 /** One row of research history -- enough to render a history list
  * without loading the full saved report. */
 export interface ResearchRunSummary {

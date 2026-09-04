@@ -137,6 +137,33 @@ class ForecastSnapshotEntry(BaseModel):
     reason: str | None = None
 
 
+class ResearchStageStatus(StrEnum):
+    PENDING = "pending"
+    RUNNING = "running"
+    SUCCESS = "success"
+    FAILED = "failed"
+    SKIPPED = "skipped"
+
+
+class ResearchStage(BaseModel):
+    key: str
+    label: str
+    status: ResearchStageStatus
+    detail: str | None = None
+
+
+class ResearchProgress(BaseModel):
+    """Real, best-effort progress for an in-flight (or just-finished)
+    research run -- see `app.snapshot.progress`. `finished=True` once
+    the run this reflects has reached a terminal state; the frontend
+    stops polling at that point rather than on a fixed timer."""
+
+    ticker: str
+    research_run_id: str | None
+    finished: bool
+    stages: list[ResearchStage]
+
+
 class PredictionOutcome(BaseModel):
     """Foundation for future accuracy evaluation -- populated by a later,
     separate evaluation pass, not by this feature. `actual_price` and

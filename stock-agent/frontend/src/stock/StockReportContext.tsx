@@ -12,6 +12,13 @@ export type StockReportState =
 interface StockReportContextValue {
   state: StockReportState
   refreshing: boolean
+  /** True only while a `runNew()` call (a real `POST /ticker`, possibly
+   * a 1-2 minute compute) is in flight -- distinct from `refreshing`,
+   * which also covers a plain `reload()` GET. Callers that want to poll
+   * `GET .../progress` for real stage-by-stage status should gate on
+   * this, not `refreshing`, since a `reload()` GET has no run to report
+   * progress for. */
+  computing: boolean
   /** Runs (or reuses) today's snapshot -- the explicit "Run research"
    * action, never fired automatically on a 404 (see runNewOnEmpty note
    * on `load` below). */
@@ -49,6 +56,7 @@ export function StockReportProvider({
 }) {
   const [state, setState] = useState<StockReportState>({ status: 'loading', ticker })
   const [refreshing, setRefreshing] = useState(false)
+  const [computing, setComputing] = useState(false)
 
   // A single monotonic counter guards every state-writing async path
   // below (`load`'s effect, `runNew`) -- `reload(id)` calling `load` can
@@ -110,7 +118,14 @@ export function StockReportProvider({
   }, [researchRunId])
 
   const runNew = useCallback(
-    (opts?: { force?: boolean }) => fetchAndSet(() => runResearch(ticker, opts?.force ?? false), true),
+    async (opts?: { force?: boolean }) => {
+      setComputing(true)
+      try {
+        await fetchAndSet(() => runResearch(ticker, opts?.force ?? false), true)
+      } finally {
+        setComputing(false)
+      }
+    },
     [fetchAndSet, ticker],
   )
 
@@ -121,8 +136,8 @@ export function StockReportProvider({
   )
 
   const value = useMemo<StockReportContextValue>(
-    () => ({ state, refreshing, runNew, reload }),
-    [state, refreshing, runNew, reload],
+    () => ({ state, refreshing, computing, runNew, reload }),
+    [state, refreshing, computing, runNew, reload],
   )
 
   return <StockReportContext.Provider value={value}>{children}</StockReportContext.Provider>

@@ -1,6 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from 'react'
 import { fetchCurrentUser, login as loginRequest, logout as logoutRequest, signup as signupRequest } from '../api/auth'
 import { getAuthToken, setAuthToken } from '../api/authToken'
+import { ApiError } from '../api/client'
 import type { UserPublic } from '../types/backend'
 
 interface AuthContextValue {
@@ -22,17 +23,34 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setStatus('anonymous')
       return
     }
+    let cancelled = false
     fetchCurrentUser()
       .then((current) => {
+        if (cancelled) return
         setUser(current)
         setStatus('authenticated')
       })
-      .catch(() => {
-        // Stored token is expired/invalid -- drop it silently rather than
-        // surfacing an error the user never asked to see.
-        setAuthToken(null)
+      .catch((error: unknown) => {
+        if (cancelled) return
+        // Only a genuine auth rejection (401 -- the token really is
+        // expired/invalid) clears the stored token. A network/timeout
+        // failure -- notably the browser aborting this exact request
+        // because the page is navigating away, which happens on every
+        // link click during the brief window before this check resolves
+        // -- must NOT be treated the same way, or an in-flight
+        // navigation silently logs the user out even though their token
+        // was fine. Falls back to 'anonymous' for the UI either way
+        // (never leaves the app stuck on "checking"), but a transient
+        // failure leaves the token in place for the next check to
+        // recover from.
+        if (error instanceof ApiError && error.status === 401) {
+          setAuthToken(null)
+        }
         setStatus('anonymous')
       })
+    return () => {
+      cancelled = true
+    }
   }, [])
 
   const login = useCallback(async (email: string, password: string) => {

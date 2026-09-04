@@ -75,6 +75,8 @@ export function AccuracyScatterChart({ points }: { points: AccuracyScatterPoint[
             label: 'Directionally correct',
             data: toXY(correct),
             backgroundColor: CORRECT_COLOR,
+            borderColor: 'rgba(255, 255, 255, 0.5)',
+            borderWidth: 1,
             pointStyle: 'circle',
             pointRadius: 4,
             pointHoverRadius: 6,
@@ -83,19 +85,28 @@ export function AccuracyScatterChart({ points }: { points: AccuracyScatterPoint[
             label: 'Directionally wrong',
             data: toXY(incorrect),
             backgroundColor: INCORRECT_COLOR,
+            borderColor: 'rgba(255, 255, 255, 0.5)',
+            borderWidth: 1,
             pointStyle: 'triangle',
             pointRadius: 5,
             pointHoverRadius: 7,
           },
+          // Rarer than the other two categories and easy to lose against
+          // the dark ground/grid, especially near the zero-return
+          // origin where the diagonal and quadrant boundary both cross
+          // -- a brighter fill and a visible border, plus a slightly
+          // larger radius, keep it findable rather than blending in.
           ...(unclassified.length > 0
             ? [
                 {
                   label: 'Unclassified',
                   data: toXY(unclassified),
                   backgroundColor: NEUTRAL_COLOR,
+                  borderColor: '#eef1fb',
+                  borderWidth: 1.5,
                   pointStyle: 'rect',
-                  pointRadius: 4,
-                  pointHoverRadius: 6,
+                  pointRadius: 5,
+                  pointHoverRadius: 7,
                 },
               ]
             : []),

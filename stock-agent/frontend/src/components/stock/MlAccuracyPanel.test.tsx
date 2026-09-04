@@ -37,7 +37,8 @@ describe('MlAccuracyPanel', () => {
 
     render(<MlAccuracyPanel ticker="ACME" />)
 
-    expect(await screen.findByText(/no walk-forward evaluation recorded yet for 14D/i)).toBeInTheDocument()
+    expect(await screen.findByText(/not evaluated yet for 14D/i)).toBeInTheDocument()
+    expect(await screen.findByText(/no walk-forward evaluation recorded yet/i)).toBeInTheDocument()
     expect(screen.getByText(/no predictions have been made for this horizon yet/i)).toBeInTheDocument()
     expect(screen.queryByText('0%')).not.toBeInTheDocument()
   })

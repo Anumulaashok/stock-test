@@ -58,9 +58,15 @@ function StatWithN({ label, value, sampleSize }: { label: string; value: string;
 
 function WalkForwardStats({ stats, horizonLabel }: { stats: MlAccuracyHorizonStats | undefined; horizonLabel: string }) {
   if (!stats || stats.sample_size === 0) {
+    // The title states the horizon-scoped absence; the reason is
+    // reserved for WHY or WHAT-NEXT, never a restatement of the same
+    // fact -- the backend's own `note` for this case is literally "No
+    // walk-forward evaluation recorded yet" (`app/api/ml_forecast.py`),
+    // which would otherwise read as the title repeated verbatim right
+    // below itself. Title and reason must never share that wording.
     return (
       <EmptyState
-        title={`No walk-forward evaluation recorded yet for ${horizonLabel}`}
+        title={`Not evaluated yet for ${horizonLabel}`}
         reason={
           stats?.note ??
           'This fills in once the model has been backtested against enough historical windows for this horizon. Not a failure -- just not run yet.'

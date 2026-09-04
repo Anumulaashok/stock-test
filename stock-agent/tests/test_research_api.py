@@ -4,6 +4,7 @@ FastAPI app, an in-memory SQLite DB, and mocked provider/LLM HTTP calls
 (mirrors `tests/test_analyze_ticker_api.py`'s pattern)."""
 
 import json
+import time
 
 import httpx
 import pytest
@@ -172,6 +173,57 @@ def test_failed_research_returns_failed_status_and_is_not_saved_as_a_report(monk
 def test_get_latest_research_404_when_none_exists():
     response = client.get("/api/v1/research/NEVERSEEN")
     assert response.status_code == 404
+
+
+# --- GET /{ticker} overlays a live quote (opening a stock must never show a stale price) ---
+
+_FRESH_QUOTE = {
+    "symbol": "ACME", "price": 123.45, "previousClose": 120.0, "change": 3.45,
+    "changePercentage": 2.875, "currency": "USD", "timestamp": int(time.time()),
+}
+
+
+@respx.mock
+def test_opening_a_saved_snapshot_overlays_a_live_quote(monkeypatch):
+    """The report saved at research time can be hours old by the time
+    someone opens the stock -- GET /{ticker} must show a current price,
+    not whatever was frozen into the report when it was computed."""
+    _set_env(monkeypatch)
+    _mock_fmp_success()
+    _mock_llm_success()
+
+    get_settings.cache_clear()
+    try:
+        created = client.post("/api/v1/research/ticker", json={"ticker": "ACME"}).json()
+        assert created["result"]["market_quote"] is None  # nothing configured a quote at creation time
+
+        respx.get(f"{FMP_BASE}/quote").mock(return_value=httpx.Response(200, json=[_FRESH_QUOTE]))
+        opened = client.get("/api/v1/research/ACME").json()
+
+        assert opened["research_run_id"] == created["research_run_id"]  # same saved snapshot
+        assert opened["result"]["market_quote"]["current_price"] == "123.45"
+        assert opened["result"]["report"]["market"]["current_price"] == "123.45"
+    finally:
+        get_settings.cache_clear()
+
+
+@respx.mock
+def test_a_failed_live_quote_fetch_still_returns_the_saved_snapshot(monkeypatch):
+    _set_env(monkeypatch)
+    _mock_fmp_success()
+    _mock_llm_success()
+
+    get_settings.cache_clear()
+    try:
+        client.post("/api/v1/research/ticker", json={"ticker": "ACME"})
+
+        respx.get(f"{FMP_BASE}/quote").mock(side_effect=httpx.ConnectError("refused"))
+        opened = client.get("/api/v1/research/ACME")
+
+        assert opened.status_code == 200
+        assert opened.json()["result"]["market_quote"] is None
+    finally:
+        get_settings.cache_clear()
 
 
 @respx.mock

@@ -5,8 +5,15 @@ which always computes fresh and never persists anything --
 `POST /api/v1/research/ticker` is the snapshot-aware entry point:
 normal calls reuse today's already-completed research for the ticker
 (no provider or LLM calls), `force_refresh` always computes and saves a
-new one, and nothing is ever overwritten. The GET routes below only
-ever replay what was already saved -- they never trigger computation.
+new one, and nothing is ever overwritten. The GET routes below never
+trigger a recomputation of financial analysis/valuation/scoring/
+forecast/LLM narrative -- they only ever replay what was already saved
+for those. `GET /{ticker}` (the "open this stock" read) is the one
+exception that does still make a live call: it overlays a fresh quote
+on top of the saved report the same way a same-day `POST /ticker` reuse
+does (see `app.snapshot.service.overlay_fresh_quote`), because a saved
+snapshot's price can otherwise sit frozen at whatever it was when the
+report was originally computed, hours or days stale.
 """
 
 import json
@@ -17,7 +24,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.dependencies import build_research_snapshot_service
+from app.api.dependencies import build_data_source_manager, build_research_snapshot_service
 from app.core.config import Settings, get_settings
 from app.data.factory import get_financial_data_provider
 from app.db.base import get_db
@@ -38,6 +45,7 @@ from app.models.research_run import (
     ResearchRunType,
 )
 from app.pipeline.models import CombinedAnalysisResult, PipelineCompanyInfo, PipelineStatus
+from app.snapshot.service import overlay_fresh_quote
 from app.snapshot.exceptions import ResearchInProgressError
 
 logger = logging.getLogger(__name__)
@@ -150,10 +158,18 @@ async def get_recent_research(
 
 
 @router.get("/{ticker}")
-async def get_latest_research(ticker: str, db: AsyncSession = Depends(get_db)) -> ResearchRunResult:
-    """Pure read: the latest COMPLETED/PARTIAL snapshot for `ticker`
-    (any date), never triggers computation. 404 if none exists yet --
-    call `POST /ticker` first."""
+async def get_latest_research(
+    ticker: str,
+    settings: Settings = Depends(get_settings),
+    db: AsyncSession = Depends(get_db),
+) -> ResearchRunResult:
+    """The latest COMPLETED/PARTIAL snapshot for `ticker` (any date) --
+    never recomputes financial analysis/valuation/scoring/forecast/LLM
+    narrative, but does overlay a live quote on top (see module
+    docstring), so opening a stock always shows a current price rather
+    than whatever was frozen into the report at whatever time it was
+    originally computed. 404 if nothing has ever been researched for
+    this ticker -- call `POST /ticker` first."""
     ticker = _normalize(ticker)
     stmt = (
         select(ResearchRunRow)
@@ -167,7 +183,14 @@ async def get_latest_research(ticker: str, db: AsyncSession = Depends(get_db)) -
     run_row = (await db.execute(stmt)).scalar_one_or_none()
     if run_row is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"No research found for {ticker} yet.")
-    return await _load_run_result(db, run_row)
+    result = await _load_run_result(db, run_row)
+    # `DataSourceManager` (not the plain single-provider
+    # `CachedMarketDataService`) -- it resolves the ticker's
+    # provider-specific symbol (e.g. yfinance needs "TCS.NS", not
+    # "TCS") and falls back across the whole configured chain, exactly
+    # like every other quote fetch in this app.
+    manager = build_data_source_manager(settings, db)
+    return await overlay_fresh_quote(manager, result, ticker)
 
 
 @router.get("/{ticker}/history")

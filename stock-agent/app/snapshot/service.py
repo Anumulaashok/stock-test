@@ -65,6 +65,39 @@ from app.snapshot.versions import CALCULATION_VERSION, DATA_VERSION, FORECAST_VE
 logger = logging.getLogger(__name__)
 
 
+async def overlay_fresh_quote(
+    market_data_service: MarketDataFetcher | None, result: ResearchRunResult, ticker: str
+) -> ResearchRunResult:
+    """Splices a live quote into an already-saved `ResearchRunResult`,
+    never recomputing anything else -- financial analysis/valuation/
+    scoring/forecast are expensive (the LLM call alone can take ~1-2
+    minutes) and don't change intraday, but the *price* is cheap (one
+    cached call, ~30s TTL) and stale within minutes. Used both by
+    `ResearchSnapshotService.run_research`'s same-day reuse path and by
+    `GET /api/v1/research/{ticker}` (a plain read, i.e. "open this
+    stock") -- without this, opening a stock only ever showed whatever
+    price was frozen into the report at whatever time it was originally
+    computed, even hours or days stale, with no live quote at all.
+    Never fails the request if the quote fetch fails -- worst case, the
+    saved snapshot's original price stands.
+    """
+    if market_data_service is None or result.result is None:
+        return result
+    try:
+        snapshot_result = await market_data_service.get_snapshot(ticker, include_recent_prices=False)
+    except Exception as exc:  # noqa: BLE001 - overlay is best-effort, never blocks the response
+        logger.warning("fresh_quote_overlay_failed ticker=%s error=%s", ticker, exc)
+        return result
+
+    if snapshot_result.status != "success" or snapshot_result.snapshot is None or snapshot_result.snapshot.quote is None:
+        return result
+
+    combined = result.result.model_copy(update={"market_quote": snapshot_result.snapshot.quote})
+    if combined.report is not None:
+        combined = combined.model_copy(update={"report": ReportService().generate(combined)})
+    return result.model_copy(update={"result": combined})
+
+
 class AnalystAnalyzer(Protocol):
     async def analyze(
         self, financial_analysis, valuation, scoring, company_financials=None, research=None
@@ -108,7 +141,7 @@ class ResearchSnapshotService:
                     existing.id, ticker, today,
                 )
                 reused = await self._load_result(db, existing, is_new_run=False)
-                return await self._overlay_fresh_quote(reused, ticker)
+                return await overlay_fresh_quote(self._market_data_service, reused, ticker)
 
         run_type = ResearchRunType.FORCE_REFRESH if request.force_refresh else ResearchRunType.NORMAL
         run_row = ResearchRunRow(
@@ -196,41 +229,6 @@ class ResearchSnapshotService:
             status=ResearchRunStatus(run_row.status), is_new_run=True,
             started_at=run_row.started_at, completed_at=run_row.completed_at, result=combined,
         )
-
-    # --- fresh-quote overlay on reused snapshots ------------------------------------------
-
-    async def _overlay_fresh_quote(self, reused: ResearchRunResult, ticker: str) -> ResearchRunResult:
-        """Same-day reuse (see `run_research`) intentionally skips
-        financial analysis/valuation/scoring/forecast/LLM recomputation
-        -- those are expensive and don't change intraday. The *price* is
-        different: it's cheap (one cached call) and stale within
-        minutes, so every reused search still fetches a current quote
-        through the existing 30s `CachedMarketDataService` and splices
-        it into the response. Never rerun anything else, and never fail
-        the request if this fetch fails -- worst case, the reused
-        snapshot's original price stands, exactly as before this change.
-        """
-        if self._market_data_service is None or reused.result is None:
-            return reused
-        try:
-            snapshot_result = await self._market_data_service.get_snapshot(
-                ticker, include_recent_prices=False
-            )
-        except Exception as exc:  # noqa: BLE001 - overlay is best-effort, never blocks a reused response
-            logger.warning("fresh_quote_overlay_failed ticker=%s error=%s", ticker, exc)
-            return reused
-
-        if (
-            snapshot_result.status != "success"
-            or snapshot_result.snapshot is None
-            or snapshot_result.snapshot.quote is None
-        ):
-            return reused
-
-        combined = reused.result.model_copy(update={"market_quote": snapshot_result.snapshot.quote})
-        if combined.report is not None:
-            combined = combined.model_copy(update={"report": ReportService().generate(combined)})
-        return reused.model_copy(update={"result": combined})
 
     # --- reuse lookup -----------------------------------------------------------------
 

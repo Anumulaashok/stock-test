@@ -80,16 +80,6 @@ export function SideNav() {
           </span>
         ))}
       </nav>
-
-      <div className="mt-auto rounded-[var(--radius-xl)] border border-[var(--color-border)] bg-[var(--color-surface)] p-4 text-center">
-        <div
-          aria-hidden="true"
-          className="mx-auto mb-3 h-14 w-14 rounded-full bg-gradient-to-br from-[var(--intel-violet)] to-[var(--intel-teal)] opacity-80 blur-[2px]"
-        />
-        <p className="text-[11px] italic leading-relaxed text-[var(--color-text-faint)]">
-          "Discipline builds wealth, not predictions."
-        </p>
-      </div>
     </aside>
   )
 }

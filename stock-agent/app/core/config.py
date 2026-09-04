@@ -103,6 +103,19 @@ class Settings(BaseSettings):
     research_default_max_results: int = Field(default=5)
     research_stale_after_days: int = Field(default=14)
 
+    # Twice-daily auto-refresh (market open / close, IST) — recomputes
+    # every ticker that has ever been successfully researched. See
+    # app/scheduler/research_refresh.py. Off by default in tests via
+    # this flag (never in production unless explicitly disabled) so a
+    # test run never accidentally schedules a live job.
+    research_auto_refresh_enabled: bool = Field(default=True)
+    # Bounds how many tickers refresh concurrently -- each refresh is a
+    # full research run (provider calls + up to a ~2 minute LLM call),
+    # so unbounded concurrency across potentially many tickers would
+    # both hammer the configured providers and spike memory/DB
+    # connections at once.
+    research_auto_refresh_max_concurrency: int = Field(default=2)
+
     # Market data provider SELECTION only — mirrors financial_data_provider's
     # policy. "fmp"/"indianapi" reuse the same connection settings above
     # (same vendor/account) but this is a fully separate abstraction

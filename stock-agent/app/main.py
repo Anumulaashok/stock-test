@@ -16,7 +16,8 @@ from app.api.search import router as search_router
 from app.api.sectors import router as sectors_router
 from app.core.config import get_settings
 from app.core.logging_config import configure_logging
-from app.db.base import create_all_tables, init_engine
+from app.db.base import create_all_tables, get_session_factory, init_engine
+from app.scheduler.scheduler import start_scheduler, stop_scheduler
 
 settings = get_settings()
 configure_logging(settings.log_level)
@@ -26,7 +27,11 @@ configure_logging(settings.log_level)
 async def lifespan(app: FastAPI):
     init_engine(settings.database_url)
     await create_all_tables()
-    yield
+    scheduler = start_scheduler(get_session_factory(), settings)
+    try:
+        yield
+    finally:
+        stop_scheduler(scheduler)
 
 
 app = FastAPI(title=settings.app_name, lifespan=lifespan)

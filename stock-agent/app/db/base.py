@@ -35,6 +35,15 @@ def get_engine() -> AsyncEngine:
     return _engine
 
 
+def get_session_factory() -> async_sessionmaker[AsyncSession]:
+    """For callers outside the request/response cycle (e.g. the
+    scheduled research-refresh job) that need their own session per
+    unit of work rather than the `get_db` FastAPI dependency."""
+    if _session_factory is None:
+        raise RuntimeError("Database engine not initialized — call init_engine() first")
+    return _session_factory
+
+
 async def create_all_tables() -> None:
     # Import models so their table metadata is registered on Base before
     # create_all runs — this module must not import app.db.models at

@@ -1,5 +1,5 @@
 import { ApiError, getJson, postJson } from './client'
-import type { ResearchRunResult, ResearchRunSummary } from '../types/backend'
+import type { RecentResearchEntry, ResearchRunResult, ResearchRunSummary } from '../types/backend'
 
 /**
  * Runs (or reuses) today's research snapshot for `ticker`. Normal calls
@@ -33,6 +33,18 @@ export async function fetchLatestResearch(ticker: string): Promise<ResearchRunRe
     if (err instanceof ApiError && err.status === 404) return null
     throw err
   }
+}
+
+/**
+ * The latest saved run for every ticker ever researched, newest first --
+ * global, not scoped to any watchlist (research has no `user_id`). Backs
+ * Intelligence home's "Recent Research" and the `/research` history
+ * page; replaces the "fetch the watchlist, then one request per ticker"
+ * fan-out those pages previously would have needed.
+ */
+export async function fetchRecentResearch(limit = 20, offset = 0): Promise<RecentResearchEntry[]> {
+  const params = new URLSearchParams({ limit: String(limit), offset: String(offset) })
+  return getJson<RecentResearchEntry[]>(`/api/v1/research/recent?${params}`)
 }
 
 export async function fetchResearchHistory(ticker: string, limit = 20): Promise<ResearchRunSummary[]> {

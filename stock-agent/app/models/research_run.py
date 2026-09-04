@@ -47,6 +47,28 @@ class ForecastHorizonKey(StrEnum):
     MONTHLY = "MONTHLY"
 
 
+class RecentResearchEntry(BaseModel):
+    """One row of `GET /api/v1/research/recent` -- the latest
+    COMPLETED/PARTIAL run for one ticker, across every ticker ever
+    researched (not scoped to any user's watchlist; research has no
+    `user_id`, see `app/db/models.py`). `company_name`/`overall_score`/
+    `band` are read from the run's persisted `ResearchAnalysisSnapshotRow`
+    rather than the full (much larger) saved report, so this list stays
+    cheap regardless of how big a report is. Both are `None` only when
+    the run's analysis snapshot itself is missing/unparseable -- never a
+    fabricated placeholder."""
+
+    ticker: str
+    company_name: str | None
+    research_run_id: str
+    research_date: date
+    status: ResearchRunStatus
+    run_type: ResearchRunType
+    overall_score: Decimal | None
+    band: str | None
+    completed_at: datetime | None = None
+
+
 class ResearchRunSummary(BaseModel):
     """One row of research history -- enough to render a history list
     without loading the (potentially large) saved report."""

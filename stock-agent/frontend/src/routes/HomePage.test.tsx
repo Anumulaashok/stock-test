@@ -5,6 +5,7 @@ import { HomePage } from './HomePage'
 import { AuthProvider } from '../auth/AuthContext'
 import * as marketHistoryApi from '../api/marketHistory'
 import * as sectorsApi from '../api/sectors'
+import * as researchApi from '../api/research'
 
 afterEach(() => vi.restoreAllMocks())
 
@@ -17,6 +18,9 @@ describe('HomePage', () => {
       sectors: [],
       warnings: [],
     })
+    // Research is global (no user_id), so RecentResearch renders for
+    // everyone -- only WatchlistSummary is auth-gated.
+    vi.spyOn(researchApi, 'fetchRecentResearch').mockResolvedValue([])
 
     render(
       <MemoryRouter>
@@ -30,9 +34,7 @@ describe('HomePage', () => {
     expect(screen.getByText('Top Opportunities')).toBeInTheDocument()
     expect(screen.getByText('Recent Research')).toBeInTheDocument()
     expect(screen.getByText('Watchlist')).toBeInTheDocument()
-    // Both RecentResearch and WatchlistSummary independently render an
-    // anonymous "Sign in" prompt -- confirm both, not just one.
-    const signInPrompts = await screen.findAllByText(/Sign in/)
-    expect(signInPrompts.length).toBeGreaterThanOrEqual(2)
+    // WatchlistSummary renders an anonymous "Sign in" prompt.
+    expect(await screen.findByText(/Sign in/)).toBeInTheDocument()
   })
 })

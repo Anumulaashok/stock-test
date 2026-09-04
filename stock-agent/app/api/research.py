@@ -14,17 +14,23 @@ import logging
 from datetime import date, datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.dependencies import build_research_snapshot_service
 from app.core.config import Settings, get_settings
 from app.data.factory import get_financial_data_provider
 from app.db.base import get_db
-from app.db.models import ForecastSnapshotRow, ResearchReportSnapshotRow, ResearchRunRow
+from app.db.models import (
+    ForecastSnapshotRow,
+    ResearchAnalysisSnapshotRow,
+    ResearchReportSnapshotRow,
+    ResearchRunRow,
+)
 from app.models.research_run import (
     ForecastHorizonKey,
     ForecastSnapshotEntry,
+    RecentResearchEntry,
     ResearchRunRequest,
     ResearchRunResult,
     ResearchRunStatus,
@@ -73,6 +79,74 @@ async def run_research(
         return await service.run_research(db, request)
     except ResearchInProgressError as exc:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+
+
+@router.get("/recent")
+async def get_recent_research(
+    limit: int = Query(20, ge=1, le=100),
+    offset: int = Query(0, ge=0),
+    db: AsyncSession = Depends(get_db),
+) -> list[RecentResearchEntry]:
+    """The latest COMPLETED/PARTIAL run for each ticker ever researched,
+    newest first -- global across all tickers, not scoped to any single
+    request's watchlist. Backs the Intelligence home page and the
+    `/research` history page without the N+1 "fetch the watchlist, then
+    one request per ticker" pattern those pages previously would have
+    needed. Declared before `GET /{ticker}` so `/recent` is never matched
+    as a ticker.
+    """
+    ranked = (
+        select(
+            ResearchRunRow.id,
+            ResearchRunRow.ticker,
+            ResearchRunRow.research_date,
+            ResearchRunRow.run_type,
+            ResearchRunRow.status,
+            ResearchRunRow.completed_at,
+            func.row_number()
+            .over(partition_by=ResearchRunRow.ticker, order_by=ResearchRunRow.completed_at.desc())
+            .label("rn"),
+        )
+        .where(ResearchRunRow.status.in_([ResearchRunStatus.COMPLETED.value, ResearchRunStatus.PARTIAL.value]))
+        .subquery()
+    )
+    stmt = (
+        select(ranked, ResearchAnalysisSnapshotRow.scoring_json)
+        .where(ranked.c.rn == 1)
+        .outerjoin(ResearchAnalysisSnapshotRow, ResearchAnalysisSnapshotRow.research_run_id == ranked.c.id)
+        .order_by(ranked.c.completed_at.desc())
+        .limit(limit)
+        .offset(offset)
+    )
+    rows = (await db.execute(stmt)).all()
+
+    entries = []
+    for row in rows:
+        company_name: str | None = None
+        overall_score: str | None = None
+        band: str | None = None
+        if row.scoring_json:
+            try:
+                scoring = json.loads(row.scoring_json)
+                company_name = scoring.get("company_name")
+                overall_score = scoring.get("overall_score")
+                band = scoring.get("band")
+            except (json.JSONDecodeError, AttributeError):
+                logger.warning("recent_research_scoring_json_unparseable ticker=%s run_id=%s", row.ticker, row.id)
+        entries.append(
+            RecentResearchEntry(
+                ticker=row.ticker,
+                company_name=company_name,
+                research_run_id=row.id,
+                research_date=row.research_date,
+                status=ResearchRunStatus(row.status),
+                run_type=ResearchRunType(row.run_type),
+                overall_score=overall_score,
+                band=band,
+                completed_at=row.completed_at,
+            )
+        )
+    return entries
 
 
 @router.get("/{ticker}")

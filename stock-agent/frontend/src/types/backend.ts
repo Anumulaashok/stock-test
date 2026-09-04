@@ -429,6 +429,23 @@ export interface CombinedAnalysisResult {
 export type ResearchRunStatusKey = 'PENDING' | 'RUNNING' | 'COMPLETED' | 'FAILED' | 'PARTIAL'
 export type ResearchRunTypeKey = 'NORMAL' | 'FORCE_REFRESH'
 
+/** One row of `GET /api/v1/research/recent` -- the latest saved run for
+ * one ticker, across every ticker ever researched (global, not scoped to
+ * any watchlist -- research has no `user_id`). `company_name`/
+ * `overall_score`/`band` come from the run's analysis snapshot, not the
+ * full report, and are `null` only if that snapshot itself is missing. */
+export interface RecentResearchEntry {
+  ticker: string
+  company_name: string | null
+  research_run_id: string
+  research_date: string
+  status: ResearchRunStatusKey
+  run_type: ResearchRunTypeKey
+  overall_score: string | null
+  band: string | null
+  completed_at: string | null
+}
+
 /** One row of research history -- enough to render a history list
  * without loading the full saved report. */
 export interface ResearchRunSummary {

@@ -1,72 +1,40 @@
-import { render, screen } from '@testing-library/react'
+import { render, screen, waitFor } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { MemoryRouter } from 'react-router-dom'
 import { RecentResearch } from './RecentResearch'
-import { AuthProvider } from '../../auth/AuthContext'
-import { setAuthToken } from '../../api/authToken'
-import * as authApi from '../../api/auth'
-import * as portfolioApi from '../../api/portfolio'
 import * as researchApi from '../../api/research'
-import { buildReport, buildRunResult } from '../../test/fixtures'
-import type { UserPublic, WatchlistItem } from '../../types/backend'
+import type { RecentResearchEntry } from '../../types/backend'
 
 afterEach(() => {
   vi.restoreAllMocks()
-  setAuthToken(null)
 })
 
 function renderIt() {
   return render(
     <MemoryRouter>
-      <AuthProvider>
-        <RecentResearch />
-      </AuthProvider>
+      <RecentResearch />
     </MemoryRouter>,
   )
 }
 
-function user(overrides: Partial<UserPublic> = {}): UserPublic {
-  return { id: 'u1', email: 'trader@example.com', created_at: '2026-01-01T00:00:00Z', ...overrides }
-}
-
-function watchlistItem(ticker: string): WatchlistItem {
-  return { ticker, created_at: '2026-09-01T00:00:00Z' }
-}
-
-async function signIn() {
-  setAuthToken('token-1')
-  vi.spyOn(authApi, 'fetchCurrentUser').mockResolvedValue(user())
+function entry(overrides: Partial<RecentResearchEntry> = {}): RecentResearchEntry {
+  return {
+    ticker: 'TCS',
+    company_name: 'Tata Consultancy Services',
+    research_run_id: 'run-1',
+    research_date: '2026-09-02',
+    status: 'COMPLETED',
+    run_type: 'NORMAL',
+    overall_score: '78',
+    band: 'good',
+    completed_at: '2026-09-02T10:00:00Z',
+    ...overrides,
+  }
 }
 
 describe('RecentResearch', () => {
-  it('prompts sign-in instead of fetching anything when anonymous', () => {
-    const watchlistSpy = vi.spyOn(portfolioApi, 'fetchWatchlist')
-
-    renderIt()
-
-    expect(screen.getByText(/and research a stock to build your history here/)).toBeInTheDocument()
-    expect(watchlistSpy).not.toHaveBeenCalled()
-  })
-
-  it('shows the honest placeholder for an empty watchlist, never a fake fan-out', async () => {
-    await signIn()
-    vi.spyOn(portfolioApi, 'fetchWatchlist').mockResolvedValue([])
-    const researchSpy = vi.spyOn(researchApi, 'fetchLatestResearch')
-
-    renderIt()
-
-    expect(await screen.findByText("Research history will appear here once you've researched a stock.")).toBeInTheDocument()
-    expect(researchSpy).not.toHaveBeenCalled()
-  })
-
-  it('fetches and shows research for a small watchlist', async () => {
-    await signIn()
-    vi.spyOn(portfolioApi, 'fetchWatchlist').mockResolvedValue([watchlistItem('TCS')])
-    vi.spyOn(researchApi, 'fetchLatestResearch').mockResolvedValue(
-      buildRunResult(buildReport({ company: { name: 'Tata Consultancy Services', ticker: 'TCS', currency: null } }), {
-        ticker: 'TCS',
-      }),
-    )
+  it('renders for an anonymous viewer -- research is global, not per-user', async () => {
+    vi.spyOn(researchApi, 'fetchRecentResearch').mockResolvedValue([entry()])
 
     renderIt()
 
@@ -74,14 +42,39 @@ describe('RecentResearch', () => {
     expect(screen.getByText('Tata Consultancy Services')).toBeInTheDocument()
   })
 
-  it('links to research history instead of fanning out for a large watchlist', async () => {
-    await signIn()
-    vi.spyOn(portfolioApi, 'fetchWatchlist').mockResolvedValue(['A', 'B', 'C', 'D'].map(watchlistItem))
-    const researchSpy = vi.spyOn(researchApi, 'fetchLatestResearch')
+  it('makes exactly one request regardless of how many tickers exist', async () => {
+    const spy = vi
+      .spyOn(researchApi, 'fetchRecentResearch')
+      .mockResolvedValue([entry({ ticker: 'A' }), entry({ ticker: 'B' }), entry({ ticker: 'C' })])
 
     renderIt()
 
-    expect(await screen.findByRole('link', { name: /View research history/ })).toHaveAttribute('href', '/research')
-    expect(researchSpy).not.toHaveBeenCalled()
+    await waitFor(() => expect(screen.getByText('A')).toBeInTheDocument())
+    expect(spy).toHaveBeenCalledTimes(1)
+  })
+
+  it('shows an honest empty state when nothing has been researched', async () => {
+    vi.spyOn(researchApi, 'fetchRecentResearch').mockResolvedValue([])
+
+    renderIt()
+
+    expect(await screen.findByText(/will appear here once someone researches a stock/i)).toBeInTheDocument()
+  })
+
+  it('links each card to the stock page and the header to /research', async () => {
+    vi.spyOn(researchApi, 'fetchRecentResearch').mockResolvedValue([entry()])
+
+    renderIt()
+
+    expect(await screen.findByRole('link', { name: /TCS/ })).toHaveAttribute('href', '/stock/TCS')
+    expect(screen.getByRole('link', { name: 'View all' })).toHaveAttribute('href', '/research')
+  })
+
+  it('shows "Unavailable" score, never a fabricated number, when overall_score is null', async () => {
+    vi.spyOn(researchApi, 'fetchRecentResearch').mockResolvedValue([entry({ overall_score: null })])
+
+    renderIt()
+
+    expect(await screen.findByText('—')).toBeInTheDocument()
   })
 })

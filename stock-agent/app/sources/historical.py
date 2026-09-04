@@ -106,12 +106,27 @@ class ScreenerHistoricalProvider:
         return points, SourceAttempt(provider=self.name, status=SourceStatus.SUCCESS)
 
     async def _resolve_and_register_mapping(self, db: AsyncSession, ticker: str) -> int | None:
-        """Searches Screener.in directly for `ticker` and, on an exact
-        match, registers the mapping so future calls (this run's other
-        stages, and every later research run) find it via
+        """Searches Screener.in directly for `ticker` and, on a
+        confident match, registers the mapping so future calls (this
+        run's other stages, and every later research run) find it via
         `CompanyIdentityResolver.resolve()`'s plain DB lookup without
-        repeating this search. Only ever matches the ticker exactly --
-        never registers an unrelated company under this ticker's name.
+        repeating this search.
+
+        "Confident" is either an exact ticker match, or a BSE-only
+        listing (no NSE listing at all, so no NSE symbol for Screener
+        to return): its `url`-derived "ticker" is BSE's own numeric
+        code instead (e.g. "532329" for a company this app tracks as
+        e.g. "DANLAW"), which never equals this app's ticker no matter
+        how correct the match is. That narrow case -- Screener's
+        result is purely numeric, and it's the only result for a query
+        that was this app's own ticker -- is accepted; anything else
+        with no exact match (including a single non-numeric,
+        presumably unrelated, result) is treated as genuinely
+        ambiguous and skipped, never guessed. The mapping is always
+        registered under *this app's* ticker (never Screener's own
+        numeric/BSE one), since that's the key
+        `CompanyIdentityResolver.resolve()` looks up by -- only
+        `screener_company_id` needs to be Screener's.
 
         Writes on a short-lived session of its own (mirrors
         `SqlCacheStore`'s established pattern) so a failed/slow mapping
@@ -127,33 +142,35 @@ class ScreenerHistoricalProvider:
             return None
 
         entries = map_screener_company_list(raw)
-        exact = next((e for e in entries if e["ticker"].upper() == ticker.upper()), None)
-        if exact is None:
+        match = next((e for e in entries if e["ticker"].upper() == ticker.upper()), None)
+        if match is None and len(entries) == 1 and entries[0]["ticker"].isdigit():
+            match = entries[0]
+        if match is None:
             return None
 
         try:
             write_session_factory = async_sessionmaker(bind=db.bind, expire_on_commit=False)
             async with write_session_factory() as write_session:
-                existing = await write_session.get(ScreenerCompanyMappingRow, exact["ticker"])
+                existing = await write_session.get(ScreenerCompanyMappingRow, ticker)
                 if existing is None:
                     write_session.add(
                         ScreenerCompanyMappingRow(
-                            ticker=exact["ticker"],
-                            company_name=exact.get("company_name"),
-                            screener_company_id=exact["screener_company_id"],
-                            consolidated=exact.get("consolidated", True),
+                            ticker=ticker,
+                            company_name=match.get("company_name"),
+                            screener_company_id=match["screener_company_id"],
+                            consolidated=match.get("consolidated", True),
                         )
                     )
                 else:
-                    existing.screener_company_id = exact["screener_company_id"]
-                    existing.consolidated = exact.get("consolidated", True)
-                    if exact.get("company_name") is not None:
-                        existing.company_name = exact["company_name"]
+                    existing.screener_company_id = match["screener_company_id"]
+                    existing.consolidated = match.get("consolidated", True)
+                    if match.get("company_name") is not None:
+                        existing.company_name = match["company_name"]
                 await write_session.commit()
         except Exception:
             logger.warning("screener_lazy_mapping_write_failed ticker=%s", ticker, exc_info=True)
 
-        return exact["screener_company_id"]
+        return match["screener_company_id"]
 
 
 def _as_decimal(value) -> Decimal | None:

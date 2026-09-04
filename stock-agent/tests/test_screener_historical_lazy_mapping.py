@@ -82,6 +82,31 @@ async def test_resolves_and_registers_a_mapping_on_first_use(db_session):
 
 
 @respx.mock
+async def test_accepts_a_bse_only_listing_whose_screener_ticker_is_a_numeric_code(db_session):
+    """A company with no NSE listing at all -- Screener's own `url`-
+    derived "ticker" is BSE's numeric code (e.g. "532329" for a company
+    this app tracks as "DANLAW"), which can never equal this app's
+    ticker no matter how correct the match is. The lone numeric result
+    for a query built from this app's own ticker is accepted."""
+    respx.get(SEARCH_PATH).mock(
+        return_value=httpx.Response(
+            200,
+            json=[{"id": 765, "name": "Danlaw Technologies India Ltd", "url": "/company/532329/consolidated/"}],
+        )
+    )
+    respx.get(_chart_path(765)).mock(return_value=httpx.Response(200, json=_CHART_RAW))
+
+    provider = ScreenerHistoricalProvider(_client())
+    points, attempt = await provider.get_recent_prices(db_session, _identity("DANLAW"), limit=30)
+
+    assert attempt.status == SourceStatus.SUCCESS
+    row = await db_session.get(ScreenerCompanyMappingRow, "DANLAW")
+    assert row is not None
+    assert row.screener_company_id == 765
+    assert row.company_name == "Danlaw Technologies India Ltd"
+
+
+@respx.mock
 async def test_never_registers_an_unrelated_company_when_no_exact_match(db_session):
     respx.get(SEARCH_PATH).mock(
         return_value=httpx.Response(

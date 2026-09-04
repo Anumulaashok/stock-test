@@ -95,6 +95,48 @@ export interface DataQuality {
   training_data_end_date: string | null
 }
 
+/** Mirrors `GET /api/v1/ml-forecast/{ticker}/history`'s per-prediction
+ * row (`app/api/ml_forecast.py`). `actual_return`/`actual_price` are
+ * `null` until the horizon's target date elapses -- that is the PENDING
+ * state, never a zero, and must be treated as absent everywhere. */
+export interface MlForecastPrediction {
+  prediction_timestamp: string
+  horizon: MlHorizonKey
+  predicted_return: number
+  predicted_price: number
+  target_date: string
+  actual_return: number | null
+  actual_price: number | null
+  direction_correct: boolean | null
+  forecast_quality: string
+  model_version: string
+}
+
+export interface MlForecastHistoryResponse {
+  ticker: string
+  predictions: MlForecastPrediction[]
+}
+
+/** One horizon's entry in `GET .../accuracy`'s `accuracy_by_horizon`.
+ * `sample_size: 0` is a distinct, real response shape (no walk-forward
+ * evaluation recorded yet) -- never render it as a 0% accuracy figure. */
+export interface MlAccuracyHorizonStats {
+  sample_size: number
+  mae: number | null
+  rmse: number | null
+  directional_accuracy: number | null
+  brier_score: number | null
+  interval_coverage_80: number | null
+  note?: string
+}
+
+export type MlAccuracyByHorizon = Partial<Record<MlHorizonKey, MlAccuracyHorizonStats>>
+
+export interface MlForecastAccuracyResponse {
+  ticker: string
+  accuracy_by_horizon: MlAccuracyByHorizon
+}
+
 export interface MlForecastResult {
   ticker: string
   generated_at: string

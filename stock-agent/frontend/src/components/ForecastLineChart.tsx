@@ -40,10 +40,23 @@ function formatTick(value: number): string {
  * markers (e.g. other methods' projections) and horizontal reference
  * lines (e.g. moving averages) -- purely presentational, computes no
  * new values of its own. */
-function formatAxisDate(iso: string): string {
-  const [y, m, d] = iso.split('-').map(Number)
-  if (!y || !m || !d) return iso
-  return new Date(y, m - 1, d).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
+export function formatAxisDate(iso: string): string {
+  // Handles both a plain date ("2026-07-24") and a full ISO datetime
+  // ("2026-07-24T00:00:00+05:30", e.g. from a provider's timestamp).
+  // A plain date must go through the local-time constructor (`new
+  // Date(iso)` parses a bare date as UTC midnight, which shifts a day
+  // back in any timezone behind UTC); a full datetime already carries
+  // its own offset, so `new Date(iso)` is correct for that case -- and
+  // required, since a manual "split on '-'" parse breaks on it (the day
+  // segment carries the time/offset too), silently falling back to the
+  // raw, unformatted -- and axis-clipping-long -- string.
+  const dateOnly = /^\d{4}-\d{2}-\d{2}$/.test(iso)
+  const parsed = dateOnly ? (() => {
+    const [y, m, d] = iso.split('-').map(Number)
+    return new Date(y, m - 1, d)
+  })() : new Date(iso)
+  if (Number.isNaN(parsed.getTime())) return iso
+  return parsed.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
 }
 
 export function ForecastLineChart({

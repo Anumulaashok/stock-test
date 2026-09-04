@@ -12,7 +12,27 @@ import './index.css'
 import { routes } from './routes/routes'
 import { AuthProvider } from './auth/AuthContext'
 
-const router = createBrowserRouter(routes)
+/**
+ * `/__dev/ml-panels` -- a fixture gallery for every ML-panel state
+ * (empty/degraded/populated), rendered with zero network calls. Dev-only:
+ * `import.meta.env.DEV` is statically known at build time, so this whole
+ * branch (and the lazy-loaded page module) is dead-code-eliminated from
+ * the production bundle, not just hidden behind a runtime check. Kept
+ * out of `routes.tsx` (owned by the lead) since it never ships. */
+const router = createBrowserRouter(
+  import.meta.env.DEV
+    ? [
+        ...routes,
+        {
+          path: '__dev/ml-panels',
+          lazy: async () => {
+            const { MlPanelsFixturePage } = await import('./dev/MlPanelsFixturePage')
+            return { Component: MlPanelsFixturePage }
+          },
+        },
+      ]
+    : routes,
+)
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>

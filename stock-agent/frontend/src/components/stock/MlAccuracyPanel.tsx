@@ -83,7 +83,12 @@ function WalkForwardStats({ stats, horizonLabel }: { stats: MlAccuracyHorizonSta
   )
 }
 
-function HorizonPanel({
+/** Exported for the dev-only fixture route (`src/dev/MlPanelsFixturePage.tsx`)
+ * -- it renders this directly against fabricated `history`/`accuracyStats`
+ * so every state (empty, below-calibration-n, populated) can be eyeballed
+ * side by side with zero network calls, never through `MlAccuracyPanel`'s
+ * own fetch. Not used by any other production call site. */
+export function HorizonPanel({
   horizon,
   history,
   accuracyStats,

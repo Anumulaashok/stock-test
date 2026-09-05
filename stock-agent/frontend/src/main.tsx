@@ -30,6 +30,13 @@ const router = createBrowserRouter(
             return { Component: MlPanelsFixturePage }
           },
         },
+        {
+          path: '__dev/health-badge',
+          lazy: async () => {
+            const { HealthBadgeFixturePage } = await import('./dev/HealthBadgeFixturePage')
+            return { Component: HealthBadgeFixturePage }
+          },
+        },
       ]
     : routes,
 )

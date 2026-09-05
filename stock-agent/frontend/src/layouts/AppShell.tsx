@@ -3,6 +3,7 @@ import { SideNav } from './SideNav'
 import { TopBar } from './TopBar'
 import { StickyAskAssistant } from '../components/StickyAskAssistant'
 import { CommandPalette } from '../features/commandPalette/CommandPalette'
+import { MobileNavDrawer } from './MobileNavDrawer'
 import { DataSourceStatusProvider } from '../dataSources/DataSourceStatusContext'
 import { useCurrentTicker } from '../hooks/useCurrentTicker'
 
@@ -28,6 +29,7 @@ export function AppShell() {
         </div>
         <StickyAskAssistant ticker={currentTicker} />
         <CommandPalette />
+        <MobileNavDrawer />
       </div>
     </DataSourceStatusProvider>
   )

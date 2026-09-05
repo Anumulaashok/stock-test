@@ -23,4 +23,5 @@ export const ICON = {
   search: 'M11 4 A7 7 0 1 0 11 18 A7 7 0 1 0 11 4 Z M20 20 L16 16',
   bell: 'M6 9 A6 6 0 0 1 18 9 C18 14 20 15 20 15 H4 C4 15 6 14 6 9 Z M10 18 A2 2 0 0 0 14 18',
   send: 'M4 12 L20 4 L14 20 L11 13 L4 12 Z',
+  menu: 'M4 7 H20 M4 12 H20 M4 17 H20',
 } as const

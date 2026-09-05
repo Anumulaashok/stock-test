@@ -40,6 +40,7 @@ from app.forecasting.ml.news.models import EventType
 from app.forecasting.ml.persistence import MlForecastPersistence, news_event_row_to_domain
 from app.forecasting.ml.quality import QualityInputs, assess_quality
 from app.forecasting.ml.regime import Regime, classify_regime
+from app.forecasting.ml.training import MODEL_FACTORIES
 from app.forecasting.ml.versions import FEATURE_VERSION, MODEL_VERSION, NEWS_MODEL_VERSION
 from app.models.ml_forecast import (
     AnalogSummary,
@@ -58,7 +59,7 @@ from app.models.ml_forecast import (
 logger = logging.getLogger(__name__)
 
 ALL_FEATURE_COLUMNS = FEATURE_COLUMNS + RELATIVE_STRENGTH_COLUMNS
-_MODEL_NAMES = ("naive_zero_return", "historical_mean_return", "random_forest", "gradient_boosting_quantile")
+_MODEL_NAMES = tuple(MODEL_FACTORIES.keys())
 
 
 @dataclass

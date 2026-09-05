@@ -33,6 +33,7 @@ from app.forecasting.ml.features import (
 )
 from app.forecasting.ml.horizons import ALL_HORIZONS, MlHorizon
 from app.forecasting.ml.models.baseline import HistoricalMeanModel, NaiveReturnModel
+from app.forecasting.ml.models.timeseries import AutoRegReturnModel
 from app.forecasting.ml.models.tree_models import GradientBoostingQuantileModel, RandomForestReturnModel
 from app.forecasting.ml.regime import classify_regime_series
 from app.forecasting.ml.targets import build_targets, target_column
@@ -45,6 +46,7 @@ MODEL_FACTORIES: dict[str, type] = {
     "historical_mean_return": HistoricalMeanModel,
     "random_forest": RandomForestReturnModel,
     "gradient_boosting_quantile": GradientBoostingQuantileModel,
+    "autoreg_return": AutoRegReturnModel,
 }
 
 ALL_FEATURE_COLUMNS = FEATURE_COLUMNS + RELATIVE_STRENGTH_COLUMNS

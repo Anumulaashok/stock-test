@@ -136,6 +136,20 @@ Investigation (a dedicated inventory pass, not assumption) found the overwhelmin
 
 ---
 
+## 2026-09-05 — ARIMA/AutoReg added; a real bug caught by actually running it, not by unit tests
+
+**Implementation:** `AutoRegReturnModel` (`app/forecasting/ml/models/timeseries.py`) uses `statsmodels.tsa.ar_model.AutoReg`, registered in `training.MODEL_FACTORIES` alongside the existing 4 models. It fits on the pooled fold's return series in the order given and applies one scalar one-step-ahead forecast to every test row -- documented explicitly as NOT a per-ticker continuous rollout, since the pooled walk-forward scheme interleaves many tickers' non-contiguous dates and a true per-ticker AR forecast would need a materially different architecture (see the module's own docstring for the full reasoning).
+
+Also eliminated two other places that duplicated the model list by hand (`backtest.py`'s local dict, `pipeline.py`'s `_MODEL_NAMES` tuple) -- both now derive from `training.MODEL_FACTORIES`, so a model added there is automatically trained, served, and shown in the CLI comparison without three separate edits.
+
+**Real bug found by actually running `python -m app.forecasting.ml.backtest --ticker DANLAW --horizon 14D`, not by the unit tests written alongside the model:** `AutoReg(..., old_names=False)` -- `old_names` was removed in the installed statsmodels 0.15, so every single fit silently hit the `except Exception` fallback and produced the exact same numbers as `HistoricalMeanModel` (confirmed: the CLI's first run showed `autoreg_return` and `historical_mean_return` rows as byte-for-byte identical MAE/RMSE/DirAcc). All 6 unit tests written first still passed, because they only asserted output shape/finiteness, never which code path produced the output. Fixed by removing the invalid kwarg; added a 7th test asserting no `autoreg_fit_failed` warning is logged for a normal fit, specifically to catch this exact class of "silent fallback masquerading as success" defect if it recurs.
+
+**Why this matters beyond the one bug:** this is the same category of defect Wave 1-3's fixture-eyeballing caught for the frontend (a component that looks fine in isolated unit tests but is silently wrong end-to-end) -- for backend ML code, the equivalent discipline is: actually run the CLI/pipeline against real data before calling a model "done," not just green unit tests in isolation.
+
+**DANLAW verification (brief's Step 36), after the fix:** real walk-forward comparison, 971 usable rows (DANLAW.NS doesn't exist on yfinance, BSE fallback to DANLAW.BO succeeded). `gradient_boosting_quantile` clearly outperforms every other model (MAE 0.1317, RMSE 0.1634, DirAcc 60.06%), including a modest edge over the existing deterministic technical baseline (MAE 0.1371, DirAcc 53.35%, though that one isn't walk-forward-folded the same way -- 1 fold, not 5 -- so not perfectly apples-to-apples on evaluation methodology even though the underlying OLS method matches). `autoreg_return` lands close to the naive/historical-mean baselines (DirAcc 54.53%), a modest but real result, not a broken or forced one. No number here was picked to agree with any particular narrative about DANLAW's current setup -- this is what the walk-forward evaluation actually produced.
+
+---
+
 ## 2026-09-05 — Wave 3: all four technical_methods entries used for cards, not price_trend
 
 **Finding:** `technical_methods` (from `TechnicalForecast.methods`, `app/forecasting/service.py`) already contains all four deterministic methods -- `linear_regression`, `sma_50`, `sma_200`, `sma_crossover_momentum` -- as one flat list with its own status/reason per entry. This is a separate computation from `price_trend` (used for the chart's dashed line), which only carries the linear-regression series.

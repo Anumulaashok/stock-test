@@ -11,7 +11,8 @@ baseline, this project's *existing* deterministic technical forecast
 (spec section 27 -- reusing `fit_linear_trend` from
 `app.forecasting.calculations`, the same OLS method
 `ForecastingService.forecast_technical` uses, so the comparison is
-apples-to-apples), and the new Random Forest / Gradient Boosting models.
+apples-to-apples), and every model in `app.forecasting.ml.training.
+MODEL_FACTORIES` (Random Forest, Gradient Boosting, and AutoReg).
 """
 
 import argparse
@@ -26,10 +27,8 @@ from app.forecasting.calculations import fit_linear_trend
 from app.forecasting.ml.data import MlPriceHistoryService
 from app.forecasting.ml.features import FEATURE_COLUMNS, RELATIVE_STRENGTH_COLUMNS, build_price_features, build_relative_strength_features
 from app.forecasting.ml.horizons import HORIZON_TRADING_DAYS, MlHorizon
-from app.forecasting.ml.models.baseline import HistoricalMeanModel, NaiveReturnModel
-from app.forecasting.ml.models.tree_models import GradientBoostingQuantileModel, RandomForestReturnModel
 from app.forecasting.ml.targets import build_targets, target_column
-from app.forecasting.ml.training import run_training
+from app.forecasting.ml.training import MODEL_FACTORIES, run_training
 from app.forecasting.ml.validation import evaluate_predictions, walk_forward_splits
 from app.sectors.universe import SECTOR_UNIVERSE
 
@@ -93,15 +92,8 @@ async def _run_ticker_backtest(ticker: str, horizon: MlHorizon) -> None:
         print("Not enough date range to build walk-forward folds.")
         return
 
-    model_factories = {
-        "naive_zero_return": NaiveReturnModel,
-        "historical_mean_return": HistoricalMeanModel,
-        "random_forest": RandomForestReturnModel,
-        "gradient_boosting_quantile": GradientBoostingQuantileModel,
-    }
-
     rows = []
-    for name, factory in model_factories.items():
+    for name, factory in MODEL_FACTORIES.items():
         maes, rmses, das, briers, coverages = [], [], [], [], []
         for fold in folds:
             X_train, y_train = usable.loc[fold.train_mask, feature_columns], usable.loc[fold.train_mask, target_col]

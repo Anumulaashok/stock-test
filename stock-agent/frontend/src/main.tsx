@@ -44,6 +44,13 @@ const router = createBrowserRouter(
             return { Component: PriceChartFixturePage }
           },
         },
+        {
+          path: '__dev/signal-card',
+          lazy: async () => {
+            const { SignalCardFixturePage } = await import('./dev/SignalCardFixturePage')
+            return { Component: SignalCardFixturePage }
+          },
+        },
       ]
     : routes,
 )

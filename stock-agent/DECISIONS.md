@@ -95,3 +95,13 @@ Append-only. Every judgment call that would previously have been a question gets
 **Known remaining instance of the same anti-pattern, not fixed:** `ForecastSection.tsx`'s pre-existing `HorizonChart` maps `data.moving_averages` into the same kind of full-width `referenceLines` for the identical reason (current SMA snapshot, no historical series) — this is pre-existing code from before this session, so per the master brief's stop-and-ask rule ("deleting or rewriting existing code you didn't write this session") it was not touched without being asked. Flagged here and to the user directly; retrofit is a one-line prop swap (`referenceLines` → `edgeMarkers`) if authorized.
 
 **What would reverse it:** never for the general rule. For the specific `ForecastSection.tsx` instance, an explicit go-ahead to touch that file would let the same fix be applied there.
+
+---
+
+## 2026-09-05 — Signal card: no regime badge
+
+**Ambiguity:** the master brief's Wave 2 signal card lists a "regime badge" alongside score/band/drivers/provenance/coverage. `regime` only reaches the frontend via `MlForecastResult` (the ML forecast fetch, Forecast tab), never via `report` itself -- the Overview tab (where the signal card lives) doesn't otherwise fetch it.
+
+**Chosen:** omitted the regime badge from `SignalCard.tsx`. Treated as grouped with "regime bands" and the RS toggle under the user's explicit "stay blocked, do not revisit" instruction for this session, since the underlying data source is the same ML-only field either way -- a single-value badge is a smaller ask than bands, but adding a new ML-forecast fetch to a tab that doesn't otherwise need one is still a real scope decision, not a free reshape of data already in hand.
+
+**What would reverse it:** an explicit decision that Overview should carry the ML forecast fetch (accepting that cost), or a backend change surfacing `regime` on `report` itself.

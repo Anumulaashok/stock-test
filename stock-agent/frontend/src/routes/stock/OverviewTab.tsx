@@ -1,4 +1,5 @@
 import { useStockReport } from '../../stock/StockReportContext'
+import { SignalCard } from '../../components/stock/SignalCard'
 import { InvestmentVerdict } from '../../components/stock/InvestmentVerdict'
 import { ScoreBreakdown } from '../../components/stock/ScoreBreakdown'
 import { WhyThisScore } from '../../components/stock/WhyThisScore'
@@ -26,6 +27,7 @@ export function OverviewTab() {
 
   return (
     <>
+      <SignalCard report={report} />
       <InvestmentVerdict summary={report.summary} />
       <InvestorSummary report={report} />
       <PriceChartSection forecast={report.forecast} />

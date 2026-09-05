@@ -9,6 +9,7 @@ from app.api.analyze import router as analyze_router
 from app.api.auth import router as auth_router
 from app.api.health import router as health_router
 from app.api.market import router as market_router
+from app.api.ml_forecast import router as ml_forecast_router
 from app.api.portfolio import router as portfolio_router
 from app.api.qa import router as qa_router
 from app.api.research import router as research_router
@@ -41,6 +42,7 @@ app.include_router(analyst_router)
 app.include_router(analyze_router)
 app.include_router(auth_router)
 app.include_router(market_router)
+app.include_router(ml_forecast_router)
 app.include_router(portfolio_router)
 app.include_router(qa_router)
 app.include_router(research_router)

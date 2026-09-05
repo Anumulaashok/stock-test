@@ -11,6 +11,7 @@ import { DiscoverPage } from './DiscoverPage'
 import { WatchlistPage } from './WatchlistPage'
 import { PortfolioPage } from './PortfolioPage'
 import { AlertsPage } from './AlertsPage'
+import { ComparePage } from './ComparePage'
 import { ResearchHistoryPage } from './ResearchHistoryPage'
 import { LoginPage } from '../pages/LoginPage'
 import { SignupPage } from '../pages/SignupPage'
@@ -61,6 +62,7 @@ export const routes: RouteObject[] = [
       },
 
       { path: 'research', element: <ResearchHistoryPage />, handle: { crumb: () => 'Research' } },
+      { path: 'compare', element: <ComparePage />, handle: { crumb: () => 'Compare' } },
 
       {
         element: <RequireAuth />,

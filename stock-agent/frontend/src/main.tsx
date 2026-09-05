@@ -65,6 +65,13 @@ const router = createBrowserRouter(
             return { Component: AlertsFixturePage }
           },
         },
+        {
+          path: '__dev/compare',
+          lazy: async () => {
+            const { CompareFixturePage } = await import('./dev/CompareFixturePage')
+            return { Component: CompareFixturePage }
+          },
+        },
       ]
     : routes,
 )

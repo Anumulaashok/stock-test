@@ -14,9 +14,15 @@ function changeColor(changePercent: string | null): string {
 export function WatchlistList({
   items,
   onRemove,
+  selectedForCompare = [],
+  onToggleCompare,
 }: {
   items: WatchlistItemEnriched[]
   onRemove: (ticker: string) => Promise<void>
+  /** Optional -- omitted entirely (no checkbox column) unless a caller
+   * wants the compare-selection flow (see `WatchlistPage.tsx`). */
+  selectedForCompare?: string[]
+  onToggleCompare?: (ticker: string) => void
 }) {
   if (items.length === 0) {
     return (
@@ -30,7 +36,13 @@ export function WatchlistList({
   return (
     <ul className="flex flex-col gap-2">
       {items.map((item) => (
-        <WatchlistRow key={item.ticker} item={item} onRemove={onRemove} />
+        <WatchlistRow
+          key={item.ticker}
+          item={item}
+          onRemove={onRemove}
+          selected={selectedForCompare.includes(item.ticker)}
+          onToggleCompare={onToggleCompare}
+        />
       ))}
     </ul>
   )
@@ -43,9 +55,13 @@ export function WatchlistList({
 function WatchlistRow({
   item,
   onRemove,
+  selected,
+  onToggleCompare,
 }: {
   item: WatchlistItemEnriched
   onRemove: (ticker: string) => Promise<void>
+  selected: boolean
+  onToggleCompare?: (ticker: string) => void
 }) {
   const [confirming, setConfirming] = useState(false)
   const [removing, setRemoving] = useState(false)
@@ -65,9 +81,20 @@ function WatchlistRow({
 
   return (
     <li className="surface-card flex flex-col gap-2 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
-      <div className="flex flex-col gap-0.5">
-        <span className="font-mono-nums text-sm font-semibold text-[var(--color-text)]">{item.ticker}</span>
-        <span className="support-text">Added {formatDate(item.created_at) ?? '—'}</span>
+      <div className="flex items-center gap-3">
+        {onToggleCompare && (
+          <input
+            type="checkbox"
+            checked={selected}
+            onChange={() => onToggleCompare(item.ticker)}
+            aria-label={`Select ${item.ticker} to compare`}
+            className="h-3.5 w-3.5 rounded border-[var(--color-border-strong)] accent-[var(--color-accent)]"
+          />
+        )}
+        <div className="flex flex-col gap-0.5">
+          <span className="font-mono-nums text-sm font-semibold text-[var(--color-text)]">{item.ticker}</span>
+          <span className="support-text">Added {formatDate(item.created_at) ?? '—'}</span>
+        </div>
       </div>
 
       <div className="flex items-center gap-4">

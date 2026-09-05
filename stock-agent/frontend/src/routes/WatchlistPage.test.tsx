@@ -184,4 +184,32 @@ describe('WatchlistPage', () => {
     expect(await within(row).findByText(/server encountered an unexpected error/i)).toBeInTheDocument()
     expect(screen.getByText('RELIANCE')).toBeInTheDocument()
   })
+
+  it('disables "Compare selected" until at least two tickers are checked', async () => {
+    vi.spyOn(portfolioApi, 'fetchWatchlistEnriched').mockResolvedValue([enrichedItem(), enrichedItem({ ticker: 'TCS' })])
+    renderWithRouter(<WatchlistPage />)
+    await screen.findByText('RELIANCE')
+
+    const compareButton = screen.getByRole('button', { name: /compare selected/i })
+    expect(compareButton).toBeDisabled()
+
+    const checkboxes = screen.getAllByRole('checkbox')
+    await userEvent.click(checkboxes[0])
+    expect(compareButton).toBeDisabled()
+    await userEvent.click(checkboxes[1])
+    expect(compareButton).toBeEnabled()
+  })
+
+  it('caps ticker selection at 4', async () => {
+    const items = ['A', 'B', 'C', 'D', 'E'].map((t) => enrichedItem({ ticker: t }))
+    vi.spyOn(portfolioApi, 'fetchWatchlistEnriched').mockResolvedValue(items)
+    renderWithRouter(<WatchlistPage />)
+    await screen.findByText('A')
+
+    const checkboxes = screen.getAllByRole('checkbox')
+    for (const box of checkboxes) await userEvent.click(box)
+
+    expect(screen.getByText('4/4 selected to compare')).toBeInTheDocument()
+    expect(checkboxes[4]).not.toBeChecked()
+  })
 })

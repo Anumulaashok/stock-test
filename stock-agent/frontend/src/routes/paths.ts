@@ -24,6 +24,7 @@ export const paths = {
   watchlist: () => '/watchlist',
   portfolio: () => '/portfolio',
   alerts: () => '/alerts',
+  compare: (tickers: string[]) => `/compare?tickers=${tickers.map(encodeURIComponent).join(',')}`,
   research: () => '/research',
   stock: (ticker: string) => `/stock/${encodeURIComponent(ticker)}`,
   stockTab: (ticker: string, tab: StockTabSegment) =>

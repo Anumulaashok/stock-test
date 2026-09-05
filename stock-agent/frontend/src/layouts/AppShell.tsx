@@ -2,6 +2,7 @@ import { Outlet } from 'react-router-dom'
 import { SideNav } from './SideNav'
 import { TopBar } from './TopBar'
 import { StickyAskAssistant } from '../components/StickyAskAssistant'
+import { DataSourceStatusProvider } from '../dataSources/DataSourceStatusContext'
 import { useCurrentTicker } from '../hooks/useCurrentTicker'
 
 /**
@@ -15,15 +16,17 @@ export function AppShell() {
   const currentTicker = useCurrentTicker()
 
   return (
-    <div className="app-shell-bg flex min-h-screen text-[var(--color-text)]">
-      <SideNav />
-      <div className="flex min-w-0 flex-1 flex-col">
-        <TopBar />
-        <div className="min-w-0 flex-1">
-          <Outlet />
+    <DataSourceStatusProvider>
+      <div className="app-shell-bg flex min-h-screen text-[var(--color-text)]">
+        <SideNav />
+        <div className="flex min-w-0 flex-1 flex-col">
+          <TopBar />
+          <div className="min-w-0 flex-1">
+            <Outlet />
+          </div>
         </div>
+        <StickyAskAssistant ticker={currentTicker} />
       </div>
-      <StickyAskAssistant ticker={currentTicker} />
-    </div>
+    </DataSourceStatusProvider>
   )
 }

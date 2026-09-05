@@ -2,6 +2,7 @@ import { NavLink } from 'react-router-dom'
 import { paths } from '../routes/paths'
 import { Icon, ICON } from '../components/ui/Icon'
 import { useAuth } from '../auth/AuthContext'
+import { SideNavHealthBadge } from './SideNavHealthBadge'
 
 const NAV_ITEMS: { label: string; icon: string; to: string; requiresAuth?: boolean }[] = [
   { label: 'Intelligence', icon: ICON.core, to: paths.home() },
@@ -80,6 +81,10 @@ export function SideNav() {
           </span>
         ))}
       </nav>
+
+      <div className="mt-auto">
+        <SideNavHealthBadge />
+      </div>
     </aside>
   )
 }

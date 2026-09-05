@@ -2,7 +2,9 @@ import { useAsync } from '../hooks/useAsync'
 import { AsyncSection } from '../components/ui/AsyncSection'
 import { deleteHolding, fetchPortfolioSummary } from '../api/portfolio'
 import { AddHoldingForm } from '../features/portfolio/AddHoldingForm'
+import { ContributorsDetractors } from '../features/portfolio/ContributorsDetractors'
 import { HoldingsTable } from '../features/portfolio/HoldingsTable'
+import { PositionSizeCalculator } from '../features/portfolio/PositionSizeCalculator'
 import { holdingsToCsv } from '../features/portfolio/portfolioCsv'
 import { PortfolioSummaryStats } from '../features/portfolio/PortfolioSummaryStats'
 import { downloadCsv } from '../lib/csv'
@@ -40,11 +42,14 @@ export function PortfolioPage() {
             </div>
             <PortfolioSummaryStats summary={summary} />
             <HoldingsTable holdings={summary.holdings} onDelete={handleDelete} onChanged={state.reload} />
+            <ContributorsDetractors holdings={summary.holdings} />
           </div>
         )}
       </AsyncSection>
 
       <AddHoldingForm onAdded={state.reload} />
+
+      <PositionSizeCalculator />
     </main>
   )
 }

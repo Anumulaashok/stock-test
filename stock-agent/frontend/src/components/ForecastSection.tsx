@@ -12,7 +12,7 @@ import {
   PriceChart,
   type ForecastChartPoint,
   type ForecastLineChartMarker,
-  type ForecastLineChartReferenceLine,
+  type PriceChartEdgeMarker,
 } from './PriceChart'
 
 const METHOD_COLORS = ['#2952a3', '#b5540a', '#3a6b35', '#8a6d00', '#7a3ab3']
@@ -184,7 +184,13 @@ function HorizonChart({
 
   const methodMarkers = showMethods ? buildMethodMarkers(data.technical_methods) : []
 
-  const referenceLines: ForecastLineChartReferenceLine[] = showSma
+  // Edge markers, not full-width reference lines: a full-width line at
+  // today's SMA value would visually cross the historical price series
+  // at points in history where no crossing actually occurred (the SMA
+  // was elsewhere then) -- the exact anti-pattern named in DECISIONS.md
+  // ("current-value-as-full-width-line"), fixed here per the same
+  // authorization that fixed PriceChartSection's identical case.
+  const edgeMarkers: PriceChartEdgeMarker[] = showSma
     ? data.moving_averages
         .map((ma, i) => {
           const value = toNumber(ma.value)
@@ -192,7 +198,7 @@ function HorizonChart({
             ? null
             : { label: `${ma.window}-day SMA`, value, color: i === 0 ? '#8a6d00' : '#7a3ab3' }
         })
-        .filter((r): r is ForecastLineChartReferenceLine => r !== null)
+        .filter((r): r is PriceChartEdgeMarker => r !== null)
     : []
 
   const hasChart = historical.length > 0 || predicted.length > 0 || methodMarkers.length > 0
@@ -233,7 +239,7 @@ function HorizonChart({
           historical={historical}
           predicted={predicted}
           markers={methodMarkers}
-          referenceLines={referenceLines}
+          edgeMarkers={edgeMarkers}
           ariaLabel="Forecast price chart"
         />
       ) : (

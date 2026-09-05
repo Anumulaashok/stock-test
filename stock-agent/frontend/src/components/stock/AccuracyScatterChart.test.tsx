@@ -1,7 +1,13 @@
-import { render, screen } from '@testing-library/react'
+import { render as rtlRender, screen } from '@testing-library/react'
+import type { ReactElement } from 'react'
 import { describe, expect, it } from 'vitest'
 import { AccuracyScatterChart, MIN_N_FOR_QUADRANT_SHADING, partitionByDirection } from './AccuracyScatterChart'
 import type { AccuracyScatterPoint } from './AccuracyScatterChart'
+import { ThemeProvider } from '../../theme/ThemeContext'
+
+function render(ui: ReactElement) {
+  return rtlRender(ui, { wrapper: ThemeProvider })
+}
 
 describe('partitionByDirection', () => {
   it('is authoritative from directionCorrect alone, never recomputed from the point coordinates', () => {

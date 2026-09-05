@@ -1,4 +1,10 @@
-import { render, screen, fireEvent } from '@testing-library/react'
+import { render as rtlRender, screen, fireEvent } from '@testing-library/react'
+import type { ReactElement } from 'react'
+import { ThemeProvider } from '../theme/ThemeContext'
+
+function render(ui: ReactElement) {
+  return rtlRender(ui, { wrapper: ThemeProvider })
+}
 import { describe, it, expect } from 'vitest'
 import { ForecastSection, allHistoricalPrices, buildMethodCards, buildMethodMarkers, predictedPrices } from './ForecastSection'
 import type {

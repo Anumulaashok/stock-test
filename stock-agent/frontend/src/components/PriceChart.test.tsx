@@ -1,6 +1,12 @@
-import { render, screen } from '@testing-library/react'
+import { render as rtlRender, screen } from '@testing-library/react'
+import type { ReactElement } from 'react'
 import { describe, expect, it } from 'vitest'
 import { PriceChart, formatAxisDate } from './PriceChart'
+import { ThemeProvider } from '../theme/ThemeContext'
+
+function render(ui: ReactElement) {
+  return rtlRender(ui, { wrapper: ThemeProvider })
+}
 
 describe('formatAxisDate', () => {
   it('formats a plain date', () => {

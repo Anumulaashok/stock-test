@@ -1,7 +1,13 @@
-import { render, screen } from '@testing-library/react'
+import { render as rtlRender, screen } from '@testing-library/react'
+import type { ReactElement } from 'react'
 import { describe, expect, it } from 'vitest'
 import { PriceChartSection, historicalVolume, currentSmaEdgeMarkers } from './PriceChartSection'
 import type { ReportForecastSection, ReportHistoricalPricePoint } from '../../types/backend'
+import { ThemeProvider } from '../../theme/ThemeContext'
+
+function render(ui: ReactElement) {
+  return rtlRender(ui, { wrapper: ThemeProvider })
+}
 
 const HISTORICAL_PRICES: ReportHistoricalPricePoint[] = [
   { date: '2026-08-25', close: '98', volume: '1200', formatted_close: '$98.00' },

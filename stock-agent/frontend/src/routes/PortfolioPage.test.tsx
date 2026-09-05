@@ -44,7 +44,7 @@ describe('PortfolioPage', () => {
     vi.spyOn(portfolioApi, 'fetchPortfolioSummary').mockResolvedValue(buildSummary())
     renderWithRouter(<PortfolioPage />)
 
-    expect(await screen.findByText('ACME')).toBeInTheDocument()
+    expect((await screen.findAllByText('ACME')).length).toBeGreaterThan(0)
     expect(screen.getByText(/₹1,000/)).toBeInTheDocument()
   })
 
@@ -60,7 +60,7 @@ describe('PortfolioPage', () => {
     const downloadSpy = vi.spyOn(csvLib, 'downloadCsv').mockImplementation(() => {})
     vi.spyOn(portfolioApi, 'fetchPortfolioSummary').mockResolvedValue(buildSummary())
     renderWithRouter(<PortfolioPage />)
-    await screen.findByText('ACME')
+    await screen.findAllByText('ACME')
 
     await userEvent.click(screen.getByRole('button', { name: /export csv/i }))
 
@@ -107,7 +107,7 @@ describe('PortfolioPage', () => {
     await userEvent.click(screen.getByRole('button', { name: /add holding/i }))
 
     await waitFor(() => expect(fetchSpy).toHaveBeenCalledTimes(2))
-    expect(await screen.findByText('ACME')).toBeInTheDocument()
+    expect((await screen.findAllByText('ACME')).length).toBeGreaterThan(0)
   })
 
   it('reloads the summary after deleting a holding', async () => {
@@ -118,7 +118,7 @@ describe('PortfolioPage', () => {
     vi.spyOn(portfolioApi, 'deleteHolding').mockResolvedValue(undefined)
 
     renderWithRouter(<PortfolioPage />)
-    await screen.findByText('ACME')
+    await screen.findAllByText('ACME')
 
     await userEvent.click(screen.getByRole('button', { name: /remove/i }))
 

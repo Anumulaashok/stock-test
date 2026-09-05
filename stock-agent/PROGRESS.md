@@ -125,6 +125,12 @@ Did not do a dedicated fixture-route screenshot for this slice (G7) -- the new m
 
 ---
 
+**Wave 6, slice 1 — Contributors/detractors + position-size calculator, done, not yet committed as of this line.** `ContributorsDetractors` (sign-based buckets over `unrealized_gain_percent`, sort/select only, no new figure -- I2) and `PositionSizeCalculator` (I3's explicit carve-out: arithmetic over user input + a real quote, always Scenario-badged, no buy/sell/execute affordance, uses the backend's own `formatted_current_price` rather than reformatting the raw value client-side) both added to `PortfolioPage`. 11 new tests (6 pure-function + 5 for the two components), plus 4 pre-existing `PortfolioPage.test.tsx` assertions adapted for the correct new behavior (ACME now legitimately appears twice on a portfolio page with a positive-gain fixture holding -- HoldingsTable row + ContributorsDetractors row). 372/372 frontend tests, `tsc -b`/`oxlint`/`vite build` clean. Eyeballed on new `/__dev/portfolio-analytics` fixture route via Playwright, including a filled-in calculator (500000 account / 1% risk / entry 2500 / stop 2400 → 50 shares, ₹1,25,000 position value, ₹5,000 at risk -- correct).
+
+**Everything else in Wave 6 requires new backend arithmetic or persistence and is not honestly buildable in the frontend:** portfolio value-over-time chart (no historical value snapshots exist), weighted score, sector concentration %, risk-band exposure %, XIRR, max drawdown, holdings correlation/overlap -- all logged as `BACKLOG.md` proposals. Wave 6 is functionally complete for what's buildable without new backend authorization.
+
+---
+
 **Wave 4 is now functionally complete** (research-run diff built; the other 3 asks correctly deferred to `BACKLOG.md` as genuine backend gaps; coverage-on-signal-card already existed from Wave 2). Continuing to Wave 5 next: Alerts backend is D10-authorized (additive tables, `app/portfolio/service.py` pattern, evaluate-on-read) -- starting there since it's clearly pre-approved, ahead of Screener/Comparison/News frontend work which hasn't been scoped this session.
 
 ---

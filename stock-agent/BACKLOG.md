@@ -146,6 +146,46 @@ Backend/infra proposals raised instead of building a frontend workaround, per `d
 
 ---
 
+## Portfolio value-over-time chart (Wave 6)
+
+**Needed:** a chart of total portfolio value across time, the natural companion to the current point-in-time summary. No historical portfolio-value snapshots exist -- `HoldingRow` only carries the current quantity/average_cost, and reconstructing past value from holdings' historical prices would misrepresent it (a holding added last week would show as "held" at last year's price, which never actually happened) and requires combining multiple tickers' historical prices into one series, which is new arithmetic either way.
+
+**Proposed shape:** a daily portfolio-value snapshot taken whenever holdings change (or via an end-of-day job), stored per-user, exposed via `GET /api/v1/portfolio/history`.
+
+**Why not built into the frontend:** no real snapshot history exists to reshape; anything shown today would have to be synthesized (I1) or silently wrong about when holdings were actually added (I1's spirit).
+
+---
+
+## Portfolio weighted score, sector concentration %, risk-band exposure % (Wave 6)
+
+**Needed:** a portfolio-level weighted overall score, "40% of holdings by value are in Financials," and "60% of the book sits in Speculative-band tickers."
+
+**Proposed shape:** a `GET /api/v1/portfolio/composition` endpoint combining each holding's market value (already computed server-side per holding) with its latest score/band/sector (from `ResearchAnalysisSnapshotRow`) and `SECTOR_UNIVERSE`, returning the weighted aggregates with the underlying `n` and total value.
+
+**Why not built into the frontend:** a weighted average across holdings is new arithmetic over multiple already-backend-computed numbers (I2) -- distinct from the topContributors/topDetractors sort already shipped this slice, which never combines two holdings' figures into a new one.
+
+---
+
+## Portfolio XIRR and max drawdown (Wave 6)
+
+**Needed:** the two return metrics an active portfolio page implies -- money-weighted return accounting for cash-flow timing (XIRR) and peak-to-trough decline (max drawdown).
+
+**Proposed shape:** both need a real cash-flow/value time series first (see the value-over-time backlog item above) plus a correct XIRR solver (iterative, not closed-form) and a drawdown scan over that series -- backend-only regardless of the missing-history gap, since both are genuinely new derived statistics over multiple time points, not a reshape of one.
+
+**Why not built into the frontend:** blocked on the same missing history as the value-over-time chart, and even with history present, XIRR/drawdown are new computed statistics (I2), not sorting or filtering.
+
+---
+
+## Holdings correlation / overlap (Wave 6)
+
+**Needed:** "these two holdings move together" or a concentration warning based on how correlated the book's positions are.
+
+**Proposed shape:** a `GET /api/v1/portfolio/correlation` endpoint computing pairwise correlation coefficients from each ticker's persisted daily price history (`DailyPriceHistoryRow`), returned as a matrix with each pair's sample size `n`.
+
+**Why not built into the frontend:** a correlation coefficient is a new statistic computed from two price series -- squarely I2 backend-only, and needs `n` surfaced per I9 (thin history between two tickers must gate the figure, not silently compute one from 5 overlapping days).
+
+---
+
 ## Not backlog — resolved
 
 **Alerts backend** (originally Wave 4/5 backend request) is **authorized** under `docs/AUTONOMY.md` D10 (additive tables only, `app/portfolio/service.py` pattern, evaluate-on-read). This is Wave 5 build scope, not a backlog proposal.

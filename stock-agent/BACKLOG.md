@@ -128,6 +128,24 @@ Backend/infra proposals raised instead of building a frontend workaround, per `d
 
 ---
 
+## Screener: sector/sub-score/fundamental filters and true universe scale (Wave 5)
+
+**Needed:** the master brief's Screener asks for filtering/sorting by sector, sub-scores, and computed fundamentals across "the universe." The only existing endpoint usable without new backend work, `GET /api/v1/research/recent`, returns `{ticker, company_name, overall_score, band, research_date, status}` -- no sector, no sub-score breakdown, no fundamentals -- and is capped at `limit<=100` (`app/api/research.py`), and by definition only covers tickers that have *already* been researched at least once (not the full listed universe).
+
+**Proposed shape:** a dedicated screener-listing endpoint reading persisted per-category scores (already computed and stored in `ResearchAnalysisSnapshotRow.scoring_json` per run) plus sector metadata (`app/sectors/universe.py`'s `SECTOR_UNIVERSE`), joined and paginated server-side, with sector/sub-score/fundamental-threshold query params.
+
+**Why not built into the frontend:** sector and sub-score data isn't in any response the frontend can already read for the full universe; fabricating sector membership or sub-scores client-side would violate I1. Shipped the honest, real version instead: filter/sort/CSV over the 100 tickers `/recent` actually returns, explicit copy stating this is "the most recently researched tickers this app already tracks -- not the full listed universe."
+
+---
+
+## Saved screens with a change feed (Wave 5)
+
+**Needed:** persisting a named filter combination and showing entries/exits/rank moves between runs -- requires server-side storage (a new table, user-scoped, following the `AlertRow`/D10 pattern) and a comparison job between two point-in-time screener snapshots.
+
+**Why not built into the frontend:** genuine new persistence, not reshaping. Not built this session; the current Screener has no save/history concept at all, only live filter/sort of the current `/recent` snapshot via URL params.
+
+---
+
 ## Not backlog — resolved
 
 **Alerts backend** (originally Wave 4/5 backend request) is **authorized** under `docs/AUTONOMY.md` D10 (additive tables only, `app/portfolio/service.py` pattern, evaluate-on-read). This is Wave 5 build scope, not a backlog proposal.

@@ -21,6 +21,7 @@ export type StockTabSegment = (typeof STOCK_TABS)[number]['segment']
 export const paths = {
   home: () => '/',
   discover: () => '/discover',
+  screener: () => '/screener',
   watchlist: () => '/watchlist',
   portfolio: () => '/portfolio',
   alerts: () => '/alerts',

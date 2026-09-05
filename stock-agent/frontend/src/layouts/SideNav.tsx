@@ -7,6 +7,7 @@ import { SideNavHealthBadge } from './SideNavHealthBadge'
 const NAV_ITEMS: { label: string; icon: string; to: string; requiresAuth?: boolean }[] = [
   { label: 'Intelligence', icon: ICON.core, to: paths.home() },
   { label: 'Discover', icon: ICON.sectors, to: paths.discover() },
+  { label: 'Screener', icon: ICON.screener, to: paths.screener() },
   { label: 'Watchlist', icon: ICON.watchlist, to: paths.watchlist(), requiresAuth: true },
   { label: 'Portfolio', icon: ICON.portfolio, to: paths.portfolio(), requiresAuth: true },
   { label: 'Alerts', icon: ICON.bell, to: paths.alerts(), requiresAuth: true },
@@ -16,7 +17,7 @@ const NAV_ITEMS: { label: string; icon: string; to: string; requiresAuth?: boole
 
 /** Not-yet-built roadmap items, shown locked so the roadmap stays
  * visible without linking anywhere. */
-const UPCOMING = ['Screener', 'News']
+const UPCOMING = ['News']
 
 export function SideNav() {
   const { status } = useAuth()

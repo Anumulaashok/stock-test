@@ -8,6 +8,7 @@ import { RootErrorBoundary } from './RootErrorBoundary'
 import { NotFoundPage } from './NotFoundPage'
 import { HomePage } from './HomePage'
 import { DiscoverPage } from './DiscoverPage'
+import { ScreenerPage } from './ScreenerPage'
 import { WatchlistPage } from './WatchlistPage'
 import { PortfolioPage } from './PortfolioPage'
 import { AlertsPage } from './AlertsPage'
@@ -44,6 +45,7 @@ export const routes: RouteObject[] = [
     children: [
       { index: true, element: <HomePage />, handle: { crumb: () => 'Intelligence' } },
       { path: 'discover', element: <DiscoverPage />, handle: { crumb: () => 'Discover' } },
+      { path: 'screener', element: <ScreenerPage />, handle: { crumb: () => 'Screener' } },
 
       {
         path: 'stock/:ticker',

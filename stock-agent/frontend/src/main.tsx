@@ -72,6 +72,13 @@ const router = createBrowserRouter(
             return { Component: CompareFixturePage }
           },
         },
+        {
+          path: '__dev/screener',
+          lazy: async () => {
+            const { ScreenerFixturePage } = await import('./dev/ScreenerFixturePage')
+            return { Component: ScreenerFixturePage }
+          },
+        },
       ]
     : routes,
 )

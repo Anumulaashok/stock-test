@@ -48,6 +48,13 @@ describe('PortfolioPage', () => {
     expect(screen.getByText(/₹1,000/)).toBeInTheDocument()
   })
 
+  it('shows a table-shaped skeleton (not generic bare lines) while loading', () => {
+    vi.spyOn(portfolioApi, 'fetchPortfolioSummary').mockReturnValue(new Promise(() => {}))
+    renderWithRouter(<PortfolioPage />)
+
+    expect(screen.getByRole('status', { name: /loading holdings/i })).toBeInTheDocument()
+  })
+
   it('shows an error state with retry on load failure', async () => {
     vi.spyOn(portfolioApi, 'fetchPortfolioSummary').mockRejectedValue(new ApiError('down', 'server', 500))
     renderWithRouter(<PortfolioPage />)

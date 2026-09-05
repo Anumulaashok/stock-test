@@ -34,6 +34,13 @@ describe('WatchlistPage', () => {
     expect(screen.getByRole('link', { name: 'View' })).toHaveAttribute('href', '/stock/RELIANCE')
   })
 
+  it('shows a row-shaped skeleton (not generic bare lines) while loading', () => {
+    vi.spyOn(portfolioApi, 'fetchWatchlistEnriched').mockReturnValue(new Promise(() => {}))
+    renderWithRouter(<WatchlistPage />)
+
+    expect(screen.getByRole('status', { name: /loading watchlist/i })).toBeInTheDocument()
+  })
+
   it('shows the live price and change when available', async () => {
     vi.spyOn(portfolioApi, 'fetchWatchlistEnriched').mockResolvedValue([
       enrichedItem({ current_price: '2750.5', price_status: 'live', change_percent: '1.25' }),

@@ -37,6 +37,13 @@ const router = createBrowserRouter(
             return { Component: HealthBadgeFixturePage }
           },
         },
+        {
+          path: '__dev/price-chart',
+          lazy: async () => {
+            const { PriceChartFixturePage } = await import('./dev/PriceChartFixturePage')
+            return { Component: PriceChartFixturePage }
+          },
+        },
       ]
     : routes,
 )

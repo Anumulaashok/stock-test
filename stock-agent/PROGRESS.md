@@ -69,7 +69,17 @@ Operating mode: in-session, report-and-wait at wave boundaries, commit and push 
 - New fixture route `/__dev/forecast-section`, eyeballed (including tab switching) -- clean, one pre-existing (not-this-slice) minor visual overlap noted (an "other technical methods" marker sitting near the new edge-marker stub for the same SMA value) but not touched, out of scope.
 - Verification floor: 288/288 vitest, `tsc -b` clean, `oxlint` clean, `vite build` clean, all 6 fixture routes confirmed absent from `dist/`.
 
-**Not started:** the ML section (ensemble output, per-model contributions/weights, quality tier badging for the naive-only fallback, quantile bands + interval_coverage_80, drivers) -- next per the sequencing instruction. Analogs/news-impact already integrated in Wave 1, not duplicated.
+**Slice 2 — ML section, done, not yet committed.**
+
+- `HorizonChip` now shows an explicit "LOW" text badge (not just a colored dot) whenever `forecast_quality === 'LOW'` -- visible on the collapsed chip, satisfying I10's "not a quieter footnote."
+- New `isNaiveOnlyFallback()` detects when every `model_outputs` entry is `naive_zero_return` (the backend's own "no trained artifacts" degradation path, `app/forecasting/ml/pipeline.py`) and renders the whole chip with a red border/background plus an explicit "NAIVE FALLBACK ONLY" label -- unmistakable, not hidden behind the "Why?" expand.
+- `DetailsPanel`'s per-model chips now show each model's `weight` (inverse walk-forward MAE); `weight === 0` renders as "weight 0 (no valid walk-forward result)" with a red border, never a bare "0%" that reads as a rounding artifact.
+- Added "80% interval coverage" next to the p10-p90 range in `DetailsPanel`, sourced from `forecast.historical_accuracy.interval_coverage_80` -- already embedded in the already-fetched `MlForecastResult`, no new fetch (G5).
+- Analogs/news-impact were already integrated in Wave 1 and drivers already existed pre-session; neither duplicated.
+- 4 new fixture sections added to `/__dev/ml-panels` (HIGH quality, LOW quality + weight-0, naive-only fallback, interval-coverage-not-yet-available), eyeballed -- all render correctly, no issues found.
+- Verification floor: 295/295 vitest, `tsc -b` clean, `oxlint` clean, `vite build` clean, all fixture routes confirmed absent from `dist/`.
+
+**Wave 3 is now functionally complete** (deterministic section built first per sequencing instruction, then the ML section, never sharing a container -- I6/I7 held throughout).
 
 ---
 

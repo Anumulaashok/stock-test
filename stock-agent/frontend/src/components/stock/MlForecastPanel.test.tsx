@@ -1,7 +1,7 @@
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
-import { MlForecastPanel, resolvedPredictionMarkers } from './MlForecastPanel'
+import { MlForecastPanel, isNaiveOnlyFallback, resolvedPredictionMarkers } from './MlForecastPanel'
 import * as mlForecastApi from '../../api/mlForecast'
 import type { MlForecastHistoryResponse, MlForecastPrediction, MlForecastResult, MlHorizonForecast } from '../../types/mlForecast'
 import type { ReportHistoricalPricePoint } from '../../types/backend'
@@ -122,5 +122,110 @@ describe('MlForecastPanel resolved-prediction overlay', () => {
     await userEvent.click(screen.getByText('1M'))
     await waitFor(() => expect(fetchHistory).toHaveBeenCalledWith('ACME', '1M', 200))
     expect(await screen.findByText(/past predicted price for 1M forecasts/i)).toBeInTheDocument()
+  })
+})
+
+describe('isNaiveOnlyFallback', () => {
+  it('is true when every model is the naive fallback', () => {
+    expect(
+      isNaiveOnlyFallback(
+        horizonForecast({ model_outputs: [{ model_name: 'naive_zero_return', point_return: 0, weight: 1 }] }),
+      ),
+    ).toBe(true)
+  })
+
+  it('is false when at least one real model is present', () => {
+    expect(
+      isNaiveOnlyFallback(
+        horizonForecast({
+          model_outputs: [
+            { model_name: 'naive_zero_return', point_return: 0, weight: 0.2 },
+            { model_name: 'random_forest', point_return: 0.03, weight: 0.8 },
+          ],
+        }),
+      ),
+    ).toBe(false)
+  })
+
+  it('is false with no models at all (nothing to call naive-only)', () => {
+    expect(isNaiveOnlyFallback(horizonForecast({ model_outputs: [] }))).toBe(false)
+  })
+})
+
+describe('MlForecastPanel quality/weight visibility (I10, Wave 3)', () => {
+  it('shows a LOW badge on the collapsed chip, not only in expanded details', async () => {
+    vi.spyOn(mlForecastApi, 'fetchMlForecast').mockResolvedValue(
+      resultFixture({ horizons: { '14D': horizonForecast({ forecast_quality: 'LOW' }), '1M': horizonForecast({ horizon: '1M' }), '3M': horizonForecast({ horizon: '3M' }), '1Y': horizonForecast({ horizon: '1Y' }) } }),
+    )
+    vi.spyOn(mlForecastApi, 'fetchMlForecastHistory').mockResolvedValue({ ticker: 'ACME', predictions: [] })
+
+    render(<MlForecastPanel ticker="ACME" historicalPrices={HISTORICAL_PRICES} />)
+
+    expect(await screen.findByText('Low')).toBeInTheDocument()
+  })
+
+  it('shows an unmistakable "naive fallback only" label on the collapsed chip', async () => {
+    vi.spyOn(mlForecastApi, 'fetchMlForecast').mockResolvedValue(
+      resultFixture({
+        horizons: {
+          '14D': horizonForecast({ forecast_quality: 'LOW', model_outputs: [{ model_name: 'naive_zero_return', point_return: 0, weight: 1 }] }),
+          '1M': horizonForecast({ horizon: '1M' }),
+          '3M': horizonForecast({ horizon: '3M' }),
+          '1Y': horizonForecast({ horizon: '1Y' }),
+        },
+      }),
+    )
+    vi.spyOn(mlForecastApi, 'fetchMlForecastHistory').mockResolvedValue({ ticker: 'ACME', predictions: [] })
+
+    render(<MlForecastPanel ticker="ACME" historicalPrices={HISTORICAL_PRICES} />)
+
+    expect(await screen.findByText('Naive fallback only')).toBeInTheDocument()
+  })
+
+  it('shows weight 0 as "no valid walk-forward result," never a bare 0%, and shows real weights alongside', async () => {
+    vi.spyOn(mlForecastApi, 'fetchMlForecast').mockResolvedValue(
+      resultFixture({
+        horizons: {
+          '14D': horizonForecast({
+            model_outputs: [
+              { model_name: 'random_forest', point_return: 0.02, weight: 0 },
+              { model_name: 'gradient_boosting_quantile', point_return: 0.03, weight: 1 },
+            ],
+          }),
+          '1M': horizonForecast({ horizon: '1M' }),
+          '3M': horizonForecast({ horizon: '3M' }),
+          '1Y': horizonForecast({ horizon: '1Y' }),
+        },
+      }),
+    )
+    vi.spyOn(mlForecastApi, 'fetchMlForecastHistory').mockResolvedValue({ ticker: 'ACME', predictions: [] })
+
+    render(<MlForecastPanel ticker="ACME" historicalPrices={HISTORICAL_PRICES} />)
+    await userEvent.click(await screen.findByRole('button', { name: /why 14D/i }))
+
+    expect(await screen.findByText(/weight 0 \(no valid walk-forward result\)/i)).toBeInTheDocument()
+    expect(screen.getByText(/weight 100%/i)).toBeInTheDocument()
+  })
+
+  it('shows the 80% interval coverage next to the range, from already-fetched historical_accuracy', async () => {
+    vi.spyOn(mlForecastApi, 'fetchMlForecast').mockResolvedValue(
+      resultFixture({
+        horizons: {
+          '14D': horizonForecast({
+            historical_accuracy: { sample_size: 12, mae: 0.02, rmse: 0.03, directional_accuracy: 0.6, brier_score: 0.2, interval_coverage_80: 0.75 },
+          }),
+          '1M': horizonForecast({ horizon: '1M' }),
+          '3M': horizonForecast({ horizon: '3M' }),
+          '1Y': horizonForecast({ horizon: '1Y' }),
+        },
+      }),
+    )
+    vi.spyOn(mlForecastApi, 'fetchMlForecastHistory').mockResolvedValue({ ticker: 'ACME', predictions: [] })
+
+    render(<MlForecastPanel ticker="ACME" historicalPrices={HISTORICAL_PRICES} />)
+    await userEvent.click(await screen.findByRole('button', { name: /why 14D/i }))
+
+    expect(await screen.findByText('80% interval coverage')).toBeInTheDocument()
+    expect(screen.getByText('75%')).toBeInTheDocument()
   })
 })

@@ -1,15 +1,42 @@
 import { HorizonPanel } from '../components/stock/MlAccuracyPanel'
 import { NewsImpactPanel } from '../components/stock/NewsImpactPanel'
 import { AnalogPanel } from '../components/stock/AnalogPanel'
-import { resolvedPredictionMarkers } from '../components/stock/MlForecastPanel'
+import { DetailsPanel, HorizonChip, resolvedPredictionMarkers } from '../components/stock/MlForecastPanel'
 import { PriceChart } from '../components/PriceChart'
 import type {
   MlAccuracyHorizonStats,
   MlForecastHistoryResponse,
   MlForecastPrediction,
+  MlHorizonForecast,
   NewsImpactSection,
   AnalogSummary,
 } from '../types/mlForecast'
+
+function horizonForecast(overrides: Partial<MlHorizonForecast> = {}): MlHorizonForecast {
+  return {
+    horizon: '14D',
+    target_date: '2026-08-15',
+    current_price: 100,
+    expected_return: 0.02,
+    expected_price: 102,
+    quantiles: { p10: 98, p25: 100, p50: 102, p75: 104, p90: 106 },
+    probability_positive: 0.6,
+    forecast_quality: 'HIGH',
+    quality_score: 0.8,
+    quality_reasons: [],
+    model_agreement: 0.7,
+    model_outputs: [
+      { model_name: 'random_forest', point_return: 0.02, weight: 0.6 },
+      { model_name: 'gradient_boosting_quantile', point_return: 0.03, weight: 0.4 },
+    ],
+    drivers: { positive_drivers: ['Momentum is positive'], negative_drivers: ['Valuation is stretched'] },
+    analog: { sample_size: 0, is_reliable: false, positive_rate: null, negative_rate: null, mean_return: null, median_return: null, quantiles: null },
+    historical_accuracy: { sample_size: 20, mae: 0.02, rmse: 0.03, directional_accuracy: 0.62, brier_score: 0.2, interval_coverage_80: 0.78 },
+    ...overrides,
+  }
+}
+
+const noop = () => {}
 
 /**
  * Dev-only fixture gallery -- every ML-panel state rendered side by side
@@ -256,6 +283,54 @@ export function MlPanelsFixturePage() {
 
       <Section title="Analogs -- unreliable (n=4), mean/median diverging sharply">
         <AnalogPanel analog={ANALOG_UNRELIABLE} horizonLabel="1Y" />
+      </Section>
+
+      <Section title="ML section (Wave 3) -- HIGH quality chip, weights, 80% interval coverage">
+        <div className="flex flex-col gap-3">
+          <HorizonChip forecast={horizonForecast()} active onSelect={noop} />
+          <DetailsPanel forecast={horizonForecast()} />
+        </div>
+      </Section>
+
+      <Section title="ML section (Wave 3) -- LOW quality chip, one model at weight 0">
+        <div className="flex flex-col gap-3">
+          <HorizonChip
+            forecast={horizonForecast({
+              forecast_quality: 'LOW',
+              model_outputs: [
+                { model_name: 'random_forest', point_return: 0.02, weight: 0 },
+                { model_name: 'gradient_boosting_quantile', point_return: 0.01, weight: 1 },
+              ],
+            })}
+            active
+            onSelect={noop}
+          />
+          <DetailsPanel
+            forecast={horizonForecast({
+              forecast_quality: 'LOW',
+              quality_reasons: ['Fewer than 60 days of price history for training.'],
+              model_outputs: [
+                { model_name: 'random_forest', point_return: 0.02, weight: 0 },
+                { model_name: 'gradient_boosting_quantile', point_return: 0.01, weight: 1 },
+              ],
+            })}
+          />
+        </div>
+      </Section>
+
+      <Section title="ML section (Wave 3) -- naive-only fallback, must be visible on the collapsed chip">
+        <HorizonChip
+          forecast={horizonForecast({
+            forecast_quality: 'LOW',
+            model_outputs: [{ model_name: 'naive_zero_return', point_return: 0, weight: 1 }],
+          })}
+          active
+          onSelect={noop}
+        />
+      </Section>
+
+      <Section title="ML section (Wave 3) -- 80% interval coverage not yet available (no walk-forward evaluation)">
+        <DetailsPanel forecast={horizonForecast({ historical_accuracy: { sample_size: 0, mae: null, rmse: null, directional_accuracy: null, brier_score: null, interval_coverage_80: null } })} />
       </Section>
 
       <Section title="Price chart -- resolved-prediction overlay (Wave 2, amber markers)">

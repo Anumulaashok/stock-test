@@ -31,6 +31,18 @@ const QUALITY_DOT: Record<string, string> = {
   LOW: '#c94f3d',
 }
 
+const NAIVE_ONLY_MODEL = 'naive_zero_return'
+
+/** True when every model behind this horizon's ensemble is the naive
+ * fallback -- the "no trained artifacts" degradation path
+ * (app/forecasting/ml/pipeline.py). This must be visible on the
+ * collapsed chip, not only inside expanded details: a degraded state
+ * that only shows up after clicking "Why?" is exactly the "quieter
+ * footnote" I10 forbids. Exported for unit testing. */
+export function isNaiveOnlyFallback(forecast: MlHorizonForecast): boolean {
+  return forecast.model_outputs.length > 0 && forecast.model_outputs.every((m) => m.model_name === NAIVE_ONLY_MODEL)
+}
+
 function pct(value: number | null | undefined, decimals = 0): string {
   if (value === null || value === undefined || Number.isNaN(value)) return '—'
   return `${(value * 100).toFixed(decimals)}%`
@@ -80,14 +92,24 @@ export function resolvedPredictionMarkers(predictions: MlForecastPrediction[]): 
     .map((p) => ({ label: 'Past prediction', date: p.target_date, value: p.predicted_price, color: RESOLVED_PREDICTION_COLOR }))
 }
 
-function HorizonChip({ forecast, active, onSelect }: { forecast: MlHorizonForecast; active: boolean; onSelect: () => void }) {
+/** Exported for the dev-only fixture route (`src/dev/MlPanelsFixturePage.tsx`)
+ * -- renders directly against fabricated `MlHorizonForecast` data, zero
+ * network calls, so quality/weight/naive-fallback states can be
+ * eyeballed side by side. Not used by any other production call site. */
+export function HorizonChip({ forecast, active, onSelect }: { forecast: MlHorizonForecast; active: boolean; onSelect: () => void }) {
   const label = HORIZON_ORDER.find((h) => h.key === forecast.horizon)?.label ?? forecast.horizon
+  const naiveOnly = isNaiveOnlyFallback(forecast)
+  const isLow = forecast.forecast_quality === 'LOW'
   return (
     <button
       type="button"
       onClick={onSelect}
       className={`flex flex-col items-center gap-1 rounded-lg border px-3 py-2 text-left transition-colors ${
-        active ? 'border-[var(--color-border-strong)] bg-[var(--color-surface-raised)]' : 'border-[var(--color-border)] bg-[var(--color-surface)]'
+        naiveOnly
+          ? 'border-[var(--color-status-negative)]/60 bg-[var(--color-status-negative)]/10'
+          : active
+            ? 'border-[var(--color-border-strong)] bg-[var(--color-surface-raised)]'
+            : 'border-[var(--color-border)] bg-[var(--color-surface)]'
       }`}
     >
       <span className="flex items-center gap-1.5 text-xs font-semibold">
@@ -97,21 +119,40 @@ function HorizonChip({ forecast, active, onSelect }: { forecast: MlHorizonForeca
           style={{ backgroundColor: QUALITY_DOT[forecast.forecast_quality] ?? '#888' }}
         />
         {label}
+        {isLow && (
+          <span className="rounded-sm bg-[var(--color-status-negative)]/15 px-1 text-[9px] font-bold uppercase text-[var(--color-status-negative)]">
+            Low
+          </span>
+        )}
       </span>
       <span className="text-sm font-semibold">{formatCurrency(forecast.expected_price)}</span>
       <span className="support-text text-xs">{pct(forecast.probability_positive)} up</span>
+      {naiveOnly && (
+        <span className="text-[9px] font-semibold uppercase tracking-wide text-[var(--color-status-negative)]">
+          Naive fallback only
+        </span>
+      )}
     </button>
   )
 }
 
-function DetailsPanel({ forecast }: { forecast: MlHorizonForecast }) {
+/** Exported for the same dev-only fixture route as `HorizonChip`. */
+export function DetailsPanel({ forecast }: { forecast: MlHorizonForecast }) {
   return (
     <div className="flex flex-col gap-4 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] p-4 text-sm">
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
         <div>
-          <div className="support-text text-xs">Range</div>
+          <div className="support-text text-xs">Range (p10-p90)</div>
           <div>
             {formatCurrency(forecast.quantiles.p10)} – {formatCurrency(forecast.quantiles.p90)}
+          </div>
+        </div>
+        <div>
+          <div className="support-text text-xs">80% interval coverage</div>
+          <div title="This band's own calibration: how often the real 80% interval actually contained the outcome, out of sample.">
+            {forecast.historical_accuracy && forecast.historical_accuracy.sample_size > 0 && forecast.historical_accuracy.interval_coverage_80 !== null
+              ? pct(forecast.historical_accuracy.interval_coverage_80)
+              : 'Not yet available'}
           </div>
         </div>
         <div>
@@ -160,12 +201,21 @@ function DetailsPanel({ forecast }: { forecast: MlHorizonForecast }) {
 
       {forecast.model_outputs.length > 0 && (
         <div>
-          <div className="mb-1 support-text text-xs uppercase tracking-wide">Per-model estimate</div>
+          <div className="mb-1 support-text text-xs uppercase tracking-wide">
+            Per-model estimate <span className="normal-case">(weight = inverse walk-forward MAE)</span>
+          </div>
           <div className="flex flex-wrap gap-2">
             {forecast.model_outputs.map((m) => (
-              <span key={m.model_name} className="rounded border border-[var(--color-border)] px-1.5 py-0.5 text-xs">
+              <span
+                key={m.model_name}
+                className={`rounded border px-1.5 py-0.5 text-xs ${
+                  m.weight === 0 ? 'border-[var(--color-status-negative)]/40 text-[var(--color-status-negative)]' : 'border-[var(--color-border)]'
+                }`}
+                title={m.weight === 0 ? 'No valid walk-forward result for this model -- contributes nothing to the ensemble.' : undefined}
+              >
                 {humanizeKey(m.model_name)}: {m.point_return >= 0 ? '+' : ''}
-                {pct(m.point_return, 1)}
+                {pct(m.point_return, 1)} · weight{' '}
+                {m.weight === 0 ? '0 (no valid walk-forward result)' : pct(m.weight)}
               </span>
             ))}
           </div>

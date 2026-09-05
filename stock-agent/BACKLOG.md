@@ -98,6 +98,36 @@ Backend/infra proposals raised instead of building a frontend workaround, per `d
 
 ---
 
+## Run Inspector stage-level provenance (Wave 4)
+
+**Needed:** "which stage blobs exist for a research_run_id, when, with what status" -- the brief's Run Inspector ask. Investigated: per-stage data is split across `RawResearchDataRow`/`ResearchAnalysisSnapshotRow`/`ForecastSnapshotRow`/`LLMAnalysisSnapshotRow`/`ResearchReportSnapshotRow` (all FK'd to `research_run_id`), but no endpoint exposes stage existence/timestamp/status as a structural summary -- `GET /{ticker}/history/{research_run_id}` returns the full `CombinedAnalysisResult`, not a lightweight per-stage manifest.
+
+**Proposed shape:** a `GET /api/v1/research/{ticker}/history/{research_run_id}/stages` endpoint returning `[{stage: str, exists: bool, created_at: datetime | None, status: str | None}]` by checking row existence across the five snapshot tables for that run id -- cheap (existence + one timestamp column per table, no JSON blob deserialization).
+
+**Why not built into the frontend:** there is nothing to reshape -- the structural fact "does this snapshot row exist" isn't present in any response the frontend already receives, and fabricating a plausible-looking stage list would violate I1.
+
+---
+
+## Score-change attribution endpoint (Wave 4)
+
+**Needed:** decomposing a score change between two runs by sub-score and driving metric. Confirmed reachable data for a naive version exists (`ResearchAnalysisSnapshotRow.scoring_json` per run, already used by `/recent`'s windowed query) -- but attributing a delta to "which metric drove it" needs real computation over two snapshots' raw component values.
+
+**Proposed shape:** `GET /api/v1/research/{ticker}/score-delta?from={run_id}&to={run_id}` returning per-category deltas with the specific metric(s) that changed, computed server-side.
+
+**Why not built into the frontend:** per I2 and this session's Wave 3 precedent (declined to compute % change for deterministic method cards for the same reason) -- even a simple subtraction between two backend-returned numbers, when presented as "this is why the score changed," is exactly the derived-statistic class I2 reserves for the backend. `ResearchRunDiffView` (this slice) instead shows both runs' raw values side by side with equality-based highlighting only -- never a computed delta.
+
+---
+
+## Universe-relative score percentiles (Wave 4)
+
+**Needed:** "score 74 puts this ticker in the 82nd percentile of the tracked universe." No existing table/service computes this -- `SectorRankingService` recomputes sector averages live via the full analysis pipeline (not from persisted snapshots), and nothing ranks one ticker's score against others'.
+
+**Proposed shape:** a service reading each tracked ticker's latest `ResearchAnalysisSnapshotRow.scoring_json.overall_score` (the same set `/recent`'s windowed query already assembles) and computing a percentile rank, exposed via a small new endpoint or an additional field on an existing report/summary response. Must be labeled "tracked universe," not "sector" or "market" (no peer/sector multiple source exists here) -- and must carry the cohort's `n`.
+
+**Why not built into the frontend:** this is a real cross-ticker statistical computation (a percentile rank requires the full distribution, not just one ticker's own data) -- squarely backend work, not reshaping.
+
+---
+
 ## Not backlog — resolved
 
 **Alerts backend** (originally Wave 4/5 backend request) is **authorized** under `docs/AUTONOMY.md` D10 (additive tables only, `app/portfolio/service.py` pattern, evaluate-on-read). This is Wave 5 build scope, not a backlog proposal.

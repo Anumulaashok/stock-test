@@ -91,6 +91,18 @@ Real gap identified: only 2 of the brief's requested model families were missing
 
 **Environment fact worth recording:** no local database file exists in this dev environment (`stock_agent.db` absent) -- `forecast_predictions`/`forecast_model_performance`/`news_events` have zero rows here. The architecture and logic are real and tested; populated historical data would only exist wherever training/ingestion jobs have actually been run (possibly a different environment). Running a full-universe `--train` job here would mean real yfinance calls across the whole sector universe -- not done without narrower instruction, since it's a materially larger and slower action than the single-ticker DANLAW check already run.
 
+## Wave 4 (Provenance) -- slice 1, done, not yet committed as of this line (see commits below once written)
+
+Investigated the research-run/snapshot data model before building anything. Found: a per-ticker Research History list + single-run viewer (`ResearchHistorySection.tsx`, `?run=` param) **already existed** and already used the `/history`/`/history/{research_run_id}` endpoints -- an earlier investigation pass this turn had incorrectly reported nothing consumed `/history`; corrected after actually reading the component. Real gap: no run-to-run **comparison**.
+
+Built: `researchRunDiff.ts` (pure `buildRunDiffRows`, equality-only comparison, never a computed delta -- I2), `ResearchRunDiffView.tsx` (side-by-side table, "Changed" flag only), wired into `ResearchHistorySection.tsx` as a checkbox-select-two-runs-then-compare flow using the two already-existing endpoints (no new fetch). 12 new tests (4 pure-function + 8 component-level, including the "no saved report" degraded case). 302/302 frontend tests, `tsc -b`/`oxlint`/`vite build` clean.
+
+Three other Wave 4 asks (Run Inspector's stage-level provenance, score-change attribution, universe-relative percentiles) all turned out to need genuine new backend computation not covered by any existing endpoint -- filed as 3 `BACKLOG.md` proposals rather than approximating any of them client-side. Coverage-on-signal-card was already done in Wave 2.
+
+Did not do a dedicated fixture-route screenshot for this slice (G7) -- the new markup reuses the exact table/`surface-card` styling already shipped and visually verified elsewhere in this same file; noting the exception explicitly rather than silently skipping the step.
+
+---
+
 **Not yet done from the new brief:** `MlForecastPipeline.predict()` still has no direct end-to-end test (only via fakes) -- flagged as a remaining gap, not silently skipped. Frontend Step 29 page structure -- largely already matches (Waves 1-3 built accuracy panel, news impact, analogs, quality/weight visibility, resolved-prediction overlay); a section-by-section audit against the exact Step 29 layout hasn't been done yet.
 
 ---

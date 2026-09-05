@@ -1,9 +1,16 @@
 import { useEffect, useState } from 'react'
-import { fetchResearchHistory } from '../api/research'
+import { fetchResearchHistory, fetchResearchRun } from '../api/research'
 import { ApiError } from '../api/client'
 import { SectionHeader } from './SectionHeader'
 import { formatDateTime } from '../lib/format'
-import type { ResearchRunStatusKey, ResearchRunSummary } from '../types/backend'
+import { ResearchRunDiffView } from '../features/research/ResearchRunDiffView'
+import type { InvestmentResearchReport, ResearchRunStatusKey, ResearchRunSummary } from '../types/backend'
+
+type CompareState =
+  | { status: 'idle' }
+  | { status: 'loading' }
+  | { status: 'error'; message: string }
+  | { status: 'ready'; oldLabel: string; newLabel: string; oldReport: InvestmentResearchReport; newReport: InvestmentResearchReport }
 
 const RUN_TYPE_LABEL: Record<string, string> = {
   NORMAL: 'Normal',
@@ -34,6 +41,8 @@ export function ResearchHistorySection({
   const [items, setItems] = useState<ResearchRunSummary[] | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [selectedForCompare, setSelectedForCompare] = useState<string[]>([])
+  const [compareState, setCompareState] = useState<CompareState>({ status: 'idle' })
 
   // A new ticker (or a fresh/forced run that changes history) means the
   // previously-loaded list is stale -- refetch the next time it's opened.
@@ -41,7 +50,47 @@ export function ResearchHistorySection({
     setItems(null)
     setError(null)
     setOpen(false)
+    setSelectedForCompare([])
+    setCompareState({ status: 'idle' })
   }, [ticker])
+
+  function toggleCompareSelection(runId: string) {
+    setCompareState({ status: 'idle' })
+    setSelectedForCompare((prev) => {
+      if (prev.includes(runId)) return prev.filter((id) => id !== runId)
+      if (prev.length >= 2) return [prev[1], runId]
+      return [...prev, runId]
+    })
+  }
+
+  async function handleCompare() {
+    if (selectedForCompare.length !== 2 || !items) return
+    setCompareState({ status: 'loading' })
+    try {
+      const [firstId, secondId] = selectedForCompare
+      const firstItem = items.find((i) => i.id === firstId)!
+      const secondItem = items.find((i) => i.id === secondId)!
+      // Older run first, regardless of click order.
+      const [olderId, olderItem, newerId, newerItem] =
+        firstItem.research_date <= secondItem.research_date
+          ? [firstId, firstItem, secondId, secondItem]
+          : [secondId, secondItem, firstId, firstItem]
+      const [oldRun, newRun] = await Promise.all([fetchResearchRun(ticker, olderId), fetchResearchRun(ticker, newerId)])
+      if (!oldRun.result.report || !newRun.result.report) {
+        setCompareState({ status: 'error', message: 'One of these runs has no saved report to compare.' })
+        return
+      }
+      setCompareState({
+        status: 'ready',
+        oldLabel: formatDateTime(olderItem.completed_at ?? olderItem.started_at) ?? olderItem.research_date,
+        newLabel: formatDateTime(newerItem.completed_at ?? newerItem.started_at) ?? newerItem.research_date,
+        oldReport: oldRun.result.report,
+        newReport: newRun.result.report,
+      })
+    } catch (err) {
+      setCompareState({ status: 'error', message: err instanceof ApiError ? err.message : 'Could not load these runs.' })
+    }
+  }
 
   async function handleToggle() {
     const next = !open
@@ -84,6 +133,7 @@ export function ResearchHistorySection({
             <table className="w-full min-w-[560px] text-left text-sm">
               <thead>
                 <tr className="border-b border-[var(--color-border)] text-xs text-[var(--color-text-faint)]">
+                  <th className="px-3 py-2 font-medium" title="Select exactly two runs to compare">Compare</th>
                   <th className="px-3 py-2 font-medium">Ticker</th>
                   <th className="px-3 py-2 font-medium">Research Date</th>
                   <th className="px-3 py-2 font-medium">Time</th>
@@ -99,6 +149,15 @@ export function ResearchHistorySection({
                   const [datePart, timePart] = formatted ? formatted.split(' · ') : [item.research_date, null]
                   return (
                     <tr key={item.id} className="transition-colors hover:bg-[var(--color-border)]/30">
+                      <td className="px-3 py-2">
+                        <input
+                          type="checkbox"
+                          checked={selectedForCompare.includes(item.id)}
+                          onChange={() => toggleCompareSelection(item.id)}
+                          aria-label={`Select ${item.research_date} run for comparison`}
+                          className="h-3.5 w-3.5 rounded border-[var(--color-border-strong)] accent-[var(--color-accent)]"
+                        />
+                      </td>
                       <td className="px-3 py-2 font-mono-nums font-semibold">{item.ticker}</td>
                       <td className="px-3 py-2 font-mono-nums text-[var(--color-text-muted)]">{datePart}</td>
                       <td className="px-3 py-2 font-mono-nums text-[var(--color-text-muted)]">{timePart ?? '—'}</td>
@@ -123,6 +182,37 @@ export function ResearchHistorySection({
               </tbody>
             </table>
           )}
+          {items && items.length > 1 && (
+            <div className="flex items-center gap-2 border-t border-[var(--color-border)] px-3 py-2">
+              <button
+                type="button"
+                onClick={handleCompare}
+                disabled={selectedForCompare.length !== 2 || compareState.status === 'loading'}
+                className="rounded-[var(--radius-sm)] border border-[var(--color-border)] px-3 py-1.5 text-xs font-medium text-[var(--color-text-muted)] transition-colors hover:border-[var(--color-border-strong)] hover:text-[var(--color-text)] disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {compareState.status === 'loading' ? 'Loading…' : 'Compare selected'}
+              </button>
+              <span className="text-xs text-[var(--color-text-faint)]">
+                {selectedForCompare.length}/2 selected
+              </span>
+            </div>
+          )}
+        </div>
+      )}
+
+      {compareState.status === 'error' && (
+        <p role="alert" className="mt-2 text-sm text-[var(--color-status-negative)]">
+          {compareState.message}
+        </p>
+      )}
+      {compareState.status === 'ready' && (
+        <div className="mt-3">
+          <ResearchRunDiffView
+            oldLabel={compareState.oldLabel}
+            newLabel={compareState.newLabel}
+            oldReport={compareState.oldReport}
+            newReport={compareState.newReport}
+          />
         </div>
       )}
     </section>

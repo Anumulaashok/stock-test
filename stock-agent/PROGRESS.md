@@ -111,7 +111,9 @@ Did not do a dedicated fixture-route screenshot for this slice (G7) -- the new m
 
 **Screen-entry condition intentionally not implemented** -- no cheap persisted screening/ranking concept exists (`SectorRankingService` recomputes live via the full pipeline), which conflicts with "evaluate on read" being cheap. Logged as a design note, not a `BACKLOG.md` entry (it's not a missing endpoint, it's a scope call: the other 5 condition types are all O(1) reads, this one would be O(universe size) live recomputation).
 
-**Not yet done in Wave 5:** Alerts frontend (page, nav unlock, header bell with unread count), Screener, Comparison, Global News. All backend-authorized-but-not-yet-built or entirely unscoped this session.
+**Slice 2 — Alerts frontend, done, not yet committed as of this line.** `/alerts` page (nav unlocked, moved out of `SideNav`'s `UPCOMING` list): create/toggle/remove alerts, auto-checks once on page open + manual "Check now" (D6 -- explicit copy states this is check-on-open, never continuous). Header bell (`TopBar`, replacing the old disabled placeholder) shows an unacknowledged-trigger count via a cheap DB-only read, separate from the expensive per-alert evaluate call -- verified by a test that the bell never fires `evaluateAlerts`. "Unavailable" (data couldn't be read) is visually distinct in wording from "not met," never collapsed together. 20 new tests. 322/322 frontend tests, `tsc -b`/`oxlint`/`vite build` clean. Eyeballed on new `/__dev/alerts` fixture route -- no issues found.
+
+**Not yet done in Wave 5:** Screener, Comparison, Global News -- all entirely unscoped this session.
 
 ---
 

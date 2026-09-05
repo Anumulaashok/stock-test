@@ -58,6 +58,13 @@ const router = createBrowserRouter(
             return { Component: ForecastSectionFixturePage }
           },
         },
+        {
+          path: '__dev/alerts',
+          lazy: async () => {
+            const { AlertsFixturePage } = await import('./dev/AlertsFixturePage')
+            return { Component: AlertsFixturePage }
+          },
+        },
       ]
     : routes,
 )

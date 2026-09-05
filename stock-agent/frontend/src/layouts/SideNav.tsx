@@ -9,13 +9,14 @@ const NAV_ITEMS: { label: string; icon: string; to: string; requiresAuth?: boole
   { label: 'Discover', icon: ICON.sectors, to: paths.discover() },
   { label: 'Watchlist', icon: ICON.watchlist, to: paths.watchlist(), requiresAuth: true },
   { label: 'Portfolio', icon: ICON.portfolio, to: paths.portfolio(), requiresAuth: true },
+  { label: 'Alerts', icon: ICON.bell, to: paths.alerts(), requiresAuth: true },
   { label: 'Research', icon: ICON.archive, to: paths.research() },
   { label: 'Settings', icon: ICON.settings, to: paths.settings(), requiresAuth: true },
 ]
 
 /** Not-yet-built roadmap items, shown locked so the roadmap stays
  * visible without linking anywhere. */
-const UPCOMING = ['Screener', 'Alerts', 'News']
+const UPCOMING = ['Screener', 'News']
 
 export function SideNav() {
   const { status } = useAuth()

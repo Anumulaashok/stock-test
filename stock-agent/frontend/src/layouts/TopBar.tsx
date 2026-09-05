@@ -1,9 +1,9 @@
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../auth/AuthContext'
 import { SearchBar } from '../components/SearchBar'
-import { Icon, ICON } from '../components/ui/Icon'
 import { paths } from '../routes/paths'
 import { Breadcrumbs } from './Breadcrumbs'
+import { AlertsBell } from './AlertsBell'
 
 export function TopBar() {
   const { status, user, logout } = useAuth()
@@ -16,14 +16,7 @@ export function TopBar() {
           <SearchBar onSubmit={(ticker) => navigate(paths.stock(ticker.trim().toUpperCase()))} disabled={false} />
         </div>
         <div className="flex items-center gap-3 text-right text-sm">
-          <button
-            type="button"
-            title="Notifications (coming soon)"
-            disabled
-            className="flex h-8 w-8 items-center justify-center rounded-full border border-[var(--color-border)] text-[var(--color-text-faint)]"
-          >
-            <Icon path={ICON.bell} className="h-4 w-4" />
-          </button>
+          <AlertsBell />
           {status === 'authenticated' && (
             <>
               <span className="hidden text-[var(--color-text-faint)] md:inline">{user?.email}</span>

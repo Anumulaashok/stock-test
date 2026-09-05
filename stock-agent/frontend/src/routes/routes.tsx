@@ -10,6 +10,7 @@ import { HomePage } from './HomePage'
 import { DiscoverPage } from './DiscoverPage'
 import { WatchlistPage } from './WatchlistPage'
 import { PortfolioPage } from './PortfolioPage'
+import { AlertsPage } from './AlertsPage'
 import { ResearchHistoryPage } from './ResearchHistoryPage'
 import { LoginPage } from '../pages/LoginPage'
 import { SignupPage } from '../pages/SignupPage'
@@ -66,6 +67,7 @@ export const routes: RouteObject[] = [
         children: [
           { path: 'watchlist', element: <WatchlistPage />, handle: { crumb: () => 'Watchlist' } },
           { path: 'portfolio', element: <PortfolioPage />, handle: { crumb: () => 'Portfolio' } },
+          { path: 'alerts', element: <AlertsPage />, handle: { crumb: () => 'Alerts' } },
           {
             path: 'settings',
             element: <SettingsLayout />,

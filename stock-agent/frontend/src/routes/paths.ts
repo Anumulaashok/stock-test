@@ -23,6 +23,7 @@ export const paths = {
   discover: () => '/discover',
   watchlist: () => '/watchlist',
   portfolio: () => '/portfolio',
+  alerts: () => '/alerts',
   research: () => '/research',
   stock: (ticker: string) => `/stock/${encodeURIComponent(ticker)}`,
   stockTab: (ticker: string, tab: StockTabSegment) =>

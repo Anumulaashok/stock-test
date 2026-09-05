@@ -1,6 +1,7 @@
 import { SectionHeader, EmptyState } from '../SectionHeader'
 import { MetricRow } from '../ui/MetricRow'
 import { TechnicalSignalBadge } from '../SignalBadge'
+import { PriceChartSection } from './PriceChartSection'
 import type { ReportForecastSection, ReportMarketSection } from '../../types/backend'
 
 /**
@@ -41,6 +42,10 @@ export function TechnicalSection({
         <MetricRow label="52-week low" value={market?.year_low ?? null} reason="Not reported by the source" />
       </div>
 
+      <div className="surface-card p-4">
+        <PriceChartSection forecast={forecast} />
+      </div>
+
       {forecast.moving_averages.length > 0 && (
         <div className="surface-card p-4">
           <h3 className="card-heading mb-1">Moving averages</h3>
@@ -52,13 +57,6 @@ export function TechnicalSection({
               reason={ma.reason}
             />
           ))}
-          {forecast.crossover && (
-            <MetricRow
-              label={`${forecast.crossover.short_window}/${forecast.crossover.long_window}-day crossover`}
-              value={forecast.crossover.signal}
-              reason={forecast.crossover.reason}
-            />
-          )}
         </div>
       )}
 

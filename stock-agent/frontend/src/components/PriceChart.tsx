@@ -1,5 +1,7 @@
 import { useEffect, useRef } from 'react'
 import {
+  BarController,
+  BarElement,
   CategoryScale,
   Chart,
   Filler,
@@ -12,7 +14,18 @@ import {
   type ChartDataset,
 } from 'chart.js'
 
-Chart.register(CategoryScale, LinearScale, LineController, LineElement, PointElement, Filler, Tooltip, Legend)
+Chart.register(
+  CategoryScale,
+  LinearScale,
+  LineController,
+  LineElement,
+  PointElement,
+  BarController,
+  BarElement,
+  Filler,
+  Tooltip,
+  Legend,
+)
 
 export interface ForecastChartPoint {
   date: string
@@ -30,6 +43,17 @@ export interface ForecastLineChartReferenceLine {
   label: string
   value: number
   color: string
+}
+
+export interface ForecastLineChartBandPoint {
+  date: string
+  low: number
+  high: number
+}
+
+export interface PriceChartVolumePoint {
+  date: string
+  value: number
 }
 
 export function formatAxisDate(iso: string): string {
@@ -60,30 +84,85 @@ export function formatAxisDate(iso: string): string {
  * where real data exists -- never interpolating across a gap that
  * isn't real. Markers (other technical methods' single-point
  * projections) and reference lines (moving averages) overlay the same
- * axes. Purely presentational -- computes no new values of its own. */
-export function ForecastLineChart({
+ * axes. An optional volume series renders as a second, shorter bar
+ * chart sharing the same date domain directly below.
+ *
+ * Extracted (Wave 2, D4) from the two callers that already existed --
+ * `ForecastSection` (deterministic forecast) and `MlForecastPanel` (ML
+ * forecast) -- into the one shared price-chart component every stock-
+ * detail surface uses, rather than a second charting approach. Purely
+ * presentational -- computes no new values of its own. */
+export function PriceChart({
   historical,
   predicted,
   markers = [],
   referenceLines = [],
+  band = [],
+  volume = [],
+  ariaLabel = 'Price chart',
 }: {
   historical: ForecastChartPoint[]
   predicted: ForecastChartPoint[]
   markers?: ForecastLineChartMarker[]
   referenceLines?: ForecastLineChartReferenceLine[]
+  /** Optional shaded uncertainty range (e.g. a P10-P90 prediction
+   * interval) drawn behind the predicted line, sharing its date axis. */
+  band?: ForecastLineChartBandPoint[]
+  /** Optional daily volume, rendered as its own bar sub-chart below the
+   * price chart, sharing the same date domain. */
+  volume?: PriceChartVolumePoint[]
+  ariaLabel?: string
 }) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const chartRef = useRef<Chart | null>(null)
+  const volumeCanvasRef = useRef<HTMLCanvasElement>(null)
+  const volumeChartRef = useRef<Chart | null>(null)
 
   useEffect(() => {
     const canvas = canvasRef.current
     if (!canvas) return
 
-    const allDates = Array.from(new Set([...historical.map((p) => p.date), ...predicted.map((p) => p.date), ...markers.map((m) => m.date)])).sort()
+    const allDates = Array.from(
+      new Set([
+        ...historical.map((p) => p.date),
+        ...predicted.map((p) => p.date),
+        ...markers.map((m) => m.date),
+        ...band.map((b) => b.date),
+        ...volume.map((v) => v.date),
+      ]),
+    ).sort()
     const historicalByDate = new Map(historical.map((p) => [p.date, p.value]))
     const predictedByDate = new Map(predicted.map((p) => [p.date, p.value]))
+    const bandLowByDate = new Map(band.map((b) => [b.date, b.low]))
+    const bandHighByDate = new Map(band.map((b) => [b.date, b.high]))
 
     const datasets: ChartDataset<'line', (number | null)[]>[] = []
+
+    if (band.length > 0) {
+      // Two invisible-border lines with the upper one filled down to the
+      // lower one -- the standard Chart.js "shade the area between two
+      // lines" technique -- render the uncertainty range behind
+      // everything else.
+      datasets.push({
+        label: 'Low estimate',
+        data: allDates.map((d) => bandLowByDate.get(d) ?? null),
+        borderColor: 'transparent',
+        backgroundColor: 'transparent',
+        pointRadius: 0,
+        borderWidth: 0,
+        spanGaps: false,
+      })
+      datasets.push({
+        label: 'High estimate',
+        data: allDates.map((d) => bandHighByDate.get(d) ?? null),
+        borderColor: 'transparent',
+        backgroundColor: 'rgba(41, 82, 163, 0.12)',
+        pointRadius: 0,
+        borderWidth: 0,
+        fill: '-1',
+        spanGaps: false,
+      })
+    }
 
     if (historical.length > 0) {
       datasets.push({
@@ -193,11 +272,66 @@ export function ForecastLineChart({
       chartRef.current?.destroy()
       chartRef.current = null
     }
-  }, [historical, predicted, markers, referenceLines])
+  }, [historical, predicted, markers, referenceLines, band, volume])
+
+  useEffect(() => {
+    const canvas = volumeCanvasRef.current
+    volumeChartRef.current?.destroy()
+    volumeChartRef.current = null
+    if (!canvas || volume.length === 0) return
+
+    const allDates = Array.from(new Set(volume.map((v) => v.date))).sort()
+    const volumeByDate = new Map(volume.map((v) => [v.date, v.value]))
+
+    volumeChartRef.current = new Chart(canvas, {
+      type: 'bar',
+      data: {
+        labels: allDates.map(formatAxisDate),
+        datasets: [
+          {
+            label: 'Volume',
+            data: allDates.map((d) => volumeByDate.get(d) ?? null),
+            backgroundColor: 'rgba(148, 163, 184, 0.45)',
+          },
+        ],
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: { display: false },
+          tooltip: {
+            callbacks: {
+              label: (ctx) => {
+                const value = ctx.parsed.y
+                return value === null ? undefined : `Volume: ${value.toLocaleString()}`
+              },
+            },
+          },
+        },
+        scales: {
+          x: { grid: { display: false }, ticks: { maxRotation: 0, autoSkip: true, maxTicksLimit: 8 } },
+          y: { grid: { color: 'rgba(148, 163, 184, 0.1)' }, ticks: { maxTicksLimit: 3 } },
+        },
+      },
+    })
+
+    return () => {
+      volumeChartRef.current?.destroy()
+      volumeChartRef.current = null
+    }
+  }, [volume])
 
   return (
-    <div style={{ height: 320 }} role="img" aria-label="Forecast price chart">
-      <canvas ref={canvasRef} />
+    <div className="flex flex-col gap-1">
+      <div style={{ height: volume.length > 0 ? 260 : 320 }} role="img" aria-label={ariaLabel}>
+        <canvas ref={canvasRef} />
+      </div>
+      {volume.length > 0 && (
+        <div style={{ height: 80 }} role="img" aria-label={`${ariaLabel} volume`}>
+          <canvas ref={volumeCanvasRef} />
+        </div>
+      )}
     </div>
   )
 }

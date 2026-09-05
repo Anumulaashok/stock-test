@@ -9,11 +9,11 @@ import type {
 } from '../types/backend'
 import { humanizeKey } from '../lib/format'
 import {
-  ForecastLineChart,
+  PriceChart,
   type ForecastChartPoint,
   type ForecastLineChartMarker,
   type ForecastLineChartReferenceLine,
-} from './ForecastLineChart'
+} from './PriceChart'
 
 const METHOD_COLORS = ['#2952a3', '#b5540a', '#3a6b35', '#8a6d00', '#7a3ab3']
 
@@ -229,7 +229,13 @@ function HorizonChart({
       </div>
 
       {hasChart ? (
-        <ForecastLineChart historical={historical} predicted={predicted} markers={methodMarkers} referenceLines={referenceLines} />
+        <PriceChart
+          historical={historical}
+          predicted={predicted}
+          markers={methodMarkers}
+          referenceLines={referenceLines}
+          ariaLabel="Forecast price chart"
+        />
       ) : (
         <div className="flex flex-col items-center gap-1.5 py-10 text-center">
           <p className="text-xs text-[var(--color-text-faint)]">{reason ?? 'No chartable data for this horizon.'}</p>

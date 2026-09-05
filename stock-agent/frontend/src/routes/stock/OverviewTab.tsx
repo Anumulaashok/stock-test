@@ -4,6 +4,7 @@ import { ScoreBreakdown } from '../../components/stock/ScoreBreakdown'
 import { WhyThisScore } from '../../components/stock/WhyThisScore'
 import { InvestorSummary } from '../../components/stock/InvestorSummary'
 import { RiskOverview } from '../../components/stock/RiskOverview'
+import { PriceChartSection } from '../../components/stock/PriceChartSection'
 import { AnalystSection } from '../../components/AnalystSection'
 import { WarningsSection } from '../../components/WarningsSection'
 import { Disclosure } from '../../components/ui/Disclosure'
@@ -27,6 +28,7 @@ export function OverviewTab() {
     <>
       <InvestmentVerdict summary={report.summary} />
       <InvestorSummary report={report} />
+      <PriceChartSection forecast={report.forecast} />
       <WhyThisScore report={report} />
       <RiskOverview risk={report.risk} />
       <Disclosure summary="Score breakdown by category">

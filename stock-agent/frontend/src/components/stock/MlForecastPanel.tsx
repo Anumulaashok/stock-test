@@ -5,10 +5,10 @@ import { AsyncSection } from '../ui/AsyncSection'
 import { formatCurrency, humanizeKey } from '../../lib/format'
 import { allHistoricalPrices } from '../ForecastSection'
 import {
-  ForecastLineChart,
+  PriceChart,
   type ForecastChartPoint,
   type ForecastLineChartBandPoint,
-} from '../ForecastLineChart'
+} from '../PriceChart'
 import { NewsImpactPanel } from './NewsImpactPanel'
 import { AnalogPanel } from './AnalogPanel'
 import type { ReportHistoricalPricePoint } from '../../types/backend'
@@ -165,7 +165,7 @@ function ForecastContent({ result, historicalPoints }: { result: MlForecastResul
 
   return (
     <div className="flex flex-col gap-3">
-      <ForecastLineChart historical={historical} predicted={predicted} band={band} />
+      <PriceChart historical={historical} predicted={predicted} band={band} ariaLabel="AI forecast price chart" />
 
       <div className="grid grid-cols-4 gap-2">
         {HORIZON_ORDER.map(({ key }) => {

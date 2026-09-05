@@ -186,6 +186,26 @@ Backend/infra proposals raised instead of building a frontend workaround, per `d
 
 ---
 
+## Bulk analyze queue with remaining-quota display (Wave 7)
+
+**Needed:** a queue for analyzing many tickers at once, surfacing remaining quota before queuing more.
+
+**Proposed shape:** a `GET /api/v1/quota` (or similar) endpoint exposing the actual per-key/per-window call budget and current usage the source manager already tracks internally, plus a queue-status endpoint if queuing is meant to survive a page reload.
+
+**Why not built into the frontend:** no real quota figure exists anywhere the frontend can read today (`grep -rn quota app` turns up only a code comment and a config default, not a tracked counter) -- a "remaining quota" figure shown without one would be fabricated (I1). A queue UI with no real quota to display would either lie about capacity or omit the very thing this feature is supposed to communicate.
+
+---
+
+## Watchlist notes/tags/conviction (Wave 7)
+
+**Needed:** free-text notes, tags, and a conviction rating per watchlist item, included in the CSV export.
+
+**Proposed shape:** additive columns (or a child table) on `WatchlistItemRow` -- `notes: str | None`, `tags: list[str]`, `conviction: int | None` -- plus `PATCH /api/v1/watchlist/{ticker}` to write them. Same additive-migration shape as D10's Alerts tables.
+
+**Why not built into the frontend:** `WatchlistItemRow` has no such columns today: this is schema/persistence work, not a reshape of an existing response, and isn't yet covered by an equivalent to D10's explicit authorization for Alerts.
+
+---
+
 ## Not backlog — resolved
 
 **Alerts backend** (originally Wave 4/5 backend request) is **authorized** under `docs/AUTONOMY.md` D10 (additive tables only, `app/portfolio/service.py` pattern, evaluate-on-read). This is Wave 5 build scope, not a backlog proposal.

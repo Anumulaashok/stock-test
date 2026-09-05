@@ -131,6 +131,14 @@ Did not do a dedicated fixture-route screenshot for this slice (G7) -- the new m
 
 ---
 
+**Wave 7, slice 1 — Empty states, layout-matching skeletons, ⌘K palette, done, not yet committed as of this line (see individual commits above this one).** Watchlist/Portfolio empty states now have a working one-click button that focuses the real add-form's input (verified via a Playwright click, not just a unit test asserting focus). `SkeletonWatchlistRows`/`SkeletonHoldingsTable` mirror their real component's actual shape instead of falling back to generic bare-line `SkeletonRows`. A global ⌘K/Ctrl+K command palette (`CommandPalette` + pure `parseCommand`) parses a bare ticker, `compare A B`, `screen score>N band:X`, or a known page name into an existing route, with a visible `⌘K` hint button in `TopBar` for discoverability -- an unsupported screener filter (sector, ROE) surfaces an honest inline error rather than silently being dropped, since neither is backed by a real endpoint. 393/397 frontend tests (the 4 failures are pre-existing, unrelated `AuthContext`/`WatchlistSummary` flakiness, confirmed identical on a clean stash of this session's changes), `tsc -b`/`oxlint`/`vite build` clean. Eyeballed via Playwright: both empty-state buttons actually move focus, both skeletons visibly match their real layout, and the palette opens/parses/navigates correctly including the sector-filter error case.
+
+**Two Wave 7 items logged to `BACKLOG.md`, not built:** bulk-analyze queue with remaining-quota display (no real quota figure exists anywhere in the backend to read -- would be fabricated) and watchlist notes/tags/conviction (needs new `WatchlistItemRow` columns + a PATCH endpoint, genuine schema work, not yet D10-equivalent authorized).
+
+**Not yet attempted in Wave 7:** sector heatmap toggle on Discover, "Ask Stock Agent" scoped to portfolio/screen/comparison, the responsive pass (Fundamentals horizontal scroll -- note: `FinancialSection`'s tables are only 3 columns per category, not obviously the wide multi-period table the brief's wording assumes; needs a closer look before committing to an approach), and restrained micro-interactions. Large remaining surface area -- continuing in subsequent slices rather than one pass.
+
+---
+
 **Wave 4 is now functionally complete** (research-run diff built; the other 3 asks correctly deferred to `BACKLOG.md` as genuine backend gaps; coverage-on-signal-card already existed from Wave 2). Continuing to Wave 5 next: Alerts backend is D10-authorized (additive tables, `app/portfolio/service.py` pattern, evaluate-on-read) -- starting there since it's clearly pre-approved, ahead of Screener/Comparison/News frontend work which hasn't been scoped this session.
 
 ---

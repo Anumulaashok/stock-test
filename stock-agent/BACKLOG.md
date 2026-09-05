@@ -88,6 +88,16 @@ Backend/infra proposals raised instead of building a frontend workaround, per `d
 
 ---
 
+## MlForecastPipeline.predict() end-to-end test coverage
+
+**Needed:** `pipeline.py`'s `MlForecastPipeline.predict()` -- the actual serving-time entry point that loads trained artifacts, runs the ensemble, computes analogs/news-impact/quality -- has no direct test exercising its real logic. Existing tests (`test_ml_forecast_api.py`, `test_ml_forecast_cache.py`) only exercise it via a hand-written fake standing in for the whole class, or along degraded/untrained paths.
+
+**Proposed shape:** a test using a real `ArtifactStore` pointed at a temp directory, populated with small trained models (from `train_all_horizons` on a synthetic dataset, mirroring `test_ml_forecast_training.py`'s fixture), then calling the real `MlForecastPipeline.predict()` and asserting the result's horizons/ensemble weights/quality actually reflect what was trained -- not just that the response schema is well-formed.
+
+**Why not done in this slice:** properly faking `MlPriceHistoryService` (async, real yfinance-shaped responses) and `NewsEventIngestionService` together correctly, without either a live network call or a fragile over-mocked test, is more work than the other gaps closed this slice -- flagged rather than rushed.
+
+---
+
 ## Not backlog — resolved
 
 **Alerts backend** (originally Wave 4/5 backend request) is **authorized** under `docs/AUTONOMY.md` D10 (additive tables only, `app/portfolio/service.py` pattern, evaluate-on-read). This is Wave 5 build scope, not a backlog proposal.

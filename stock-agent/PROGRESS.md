@@ -79,6 +79,22 @@ Operating mode: in-session, report-and-wait at wave boundaries, commit and push 
 - 4 new fixture sections added to `/__dev/ml-panels` (HIGH quality, LOW quality + weight-0, naive-only fallback, interval-coverage-not-yet-available), eyeballed -- all render correctly, no issues found.
 - Verification floor: 295/295 vitest, `tsc -b` clean, `oxlint` clean, `vite build` clean, all fixture routes confirmed absent from `dist/`.
 
+## Execution mode change (2026-09-05)
+
+Switched from "report each wave, wait" to **full autonomous, never-pause** per explicit user instruction, following a large new "build a real ML forecasting system" brief's STEP 40-47. See `docs/CONTINUOUS_RUN.md` for the adapted protocol, and `DECISIONS.md` for the reasoning (including two prior user instructions that still take precedence: push once per wave boundary not per slice, and established commit granularity).
+
+**Critical finding before any new ML code was written:** investigated the existing `app/forecasting/ml/` subsystem (33 files) instead of assuming the brief's "build from scratch" framing was accurate. It already implements almost everything asked: real expanding-window walk-forward validation, real leakage prevention, a full 30-category news taxonomy with dedup/novelty/event-study (abnormal return vs. benchmark), and a real inverse-walk-forward-MAE ensemble. 78/78 `test_ml_forecast_*` tests were passing -- **but the entire Python backend (33 files + 3 more + 13 test files, 47 files total) had never actually been committed to git**, despite an earlier commit this session (`6fc0310`) claiming to. Fixed: committed the real pre-existing snapshot (`2222845`), verified via diff that it contained none of this session's later ML edits.
+
+Real gap identified: only 2 of the brief's requested model families were missing (ARIMA/AutoReg, LightGBM/XGBoost). User approved adding `statsmodels`/AutoReg (done, commit `5e01a31` -- also caught and fixed a real bug, `AutoReg(old_names=False)` not valid in the installed statsmodels 0.15, via actually running the CLI against DANLAW rather than trusting green unit tests alone). User declined LightGBM/XGBoost (system `libomp` dependency, marginal expected gain over the existing sklearn `HistGradientBoostingRegressor`).
+
+**Also found and fixed:** `training.py`'s `train_all_horizons()` and `pipeline.py`'s `MlForecastPipeline.predict()` had zero direct test coverage (only exercised via fakes/degraded paths in `test_ml_forecast_api.py`/`test_ml_forecast_cache.py`). Added `tests/test_ml_forecast_training.py` (6 tests, synthetic dataset with a genuinely learnable relationship, confirms a real model beats naive baseline via walk-forward MAE -- not just "the code runs").
+
+**Environment fact worth recording:** no local database file exists in this dev environment (`stock_agent.db` absent) -- `forecast_predictions`/`forecast_model_performance`/`news_events` have zero rows here. The architecture and logic are real and tested; populated historical data would only exist wherever training/ingestion jobs have actually been run (possibly a different environment). Running a full-universe `--train` job here would mean real yfinance calls across the whole sector universe -- not done without narrower instruction, since it's a materially larger and slower action than the single-ticker DANLAW check already run.
+
+**Not yet done from the new brief:** `MlForecastPipeline.predict()` still has no direct end-to-end test (only via fakes) -- flagged as a remaining gap, not silently skipped. Frontend Step 29 page structure -- largely already matches (Waves 1-3 built accuracy panel, news impact, analogs, quality/weight visibility, resolved-prediction overlay); a section-by-section audit against the exact Step 29 layout hasn't been done yet.
+
+---
+
 **Wave 3 is now functionally complete** (deterministic section built first per sequencing instruction, then the ML section, never sharing a container -- I6/I7 held throughout).
 
 ---

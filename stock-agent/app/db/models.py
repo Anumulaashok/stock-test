@@ -98,6 +98,49 @@ class WatchlistItemRow(Base):
     user: Mapped["UserRow"] = relationship(back_populates="watchlist_items")
 
 
+class AlertRow(Base):
+    """A user's standing condition on one ticker, checked on read
+    (D6/D10) -- there is no scheduler. `last_seen_regime` exists only
+    for REGIME_CHANGE alerts: evaluation needs to know what regime was
+    last observed to detect a *change*, not just read the current one."""
+
+    __tablename__ = "alerts"
+    __table_args__ = (
+        UniqueConstraint("user_id", "ticker", "condition_type", "threshold_value", name="uq_alert_user_ticker_condition"),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_new_id)
+    user_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("users.id", ondelete="CASCADE"), index=True, nullable=False
+    )
+    ticker: Mapped[str] = mapped_column(String(32), nullable=False)
+    condition_type: Mapped[str] = mapped_column(String(32), nullable=False)
+    threshold_value: Mapped[Decimal | None] = mapped_column(Numeric(20, 6), nullable=True)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    last_seen_regime: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow, onupdate=_utcnow, nullable=False
+    )
+
+
+class AlertTriggerRow(Base):
+    """One evaluate-on-read pass finding an alert's condition newly
+    met. `observed_value` is a plain string (e.g. a formatted price or
+    score) -- a human-readable record of what was actually seen, not a
+    recomputation target."""
+
+    __tablename__ = "alert_triggers"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_new_id)
+    alert_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("alerts.id", ondelete="CASCADE"), index=True, nullable=False
+    )
+    triggered_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow, nullable=False)
+    observed_value: Mapped[str] = mapped_column(String(64), nullable=False)
+    acknowledged: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+
+
 class CacheEntryRow(Base):
     """Generic TTL cache store -- see `app/cache/`. Value is an opaque
     JSON blob (a serialized Pydantic model); this table has no

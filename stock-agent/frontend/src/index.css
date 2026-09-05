@@ -71,10 +71,66 @@
   --shadow-lg: 0 24px 48px -12px rgba(0, 0, 0, 0.7), 0 8px 16px -4px rgba(0, 0, 0, 0.45);
 
   --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+
+  /* Chart.js reads these via getComputedStyle at chart-build time
+     (`src/lib/chartTheme.ts`) -- canvas isn't styled by CSS, so a
+     theme switch only takes effect once the chart is rebuilt with a
+     freshly-read value, not automatically like the rest of the page. */
+  --chart-grid: rgba(148, 163, 184, 0.15);
+  --chart-tick: #9aa5c7;
+  --chart-historical: #9ca3af;
+  --chart-predicted: #2952a3;
+  --chart-predicted-fill: rgba(41, 82, 163, 0.15);
+  --chart-band-fill: rgba(41, 82, 163, 0.12);
+  --chart-volume-bar: rgba(148, 163, 184, 0.45);
+  --chart-point-border: rgba(255, 255, 255, 0.5);
+  --chart-quadrant-line: rgba(148, 163, 184, 0.55);
+}
+
+/* Wave 8 (D8): light theme is this one override block of the same
+   token names -- every shared primitive already reads exclusively
+   from --color- and --chart- tokens, so nothing else needed to
+   change. Applies whenever data-theme="light" is set on <html> (see
+   useTheme). */
+:root[data-theme='light'] {
+  --color-bg: #f6f7fb;
+  --color-bg-subtle: #eceef6;
+  --color-surface: #ffffff;
+  --color-surface-raised: #ffffff;
+  --color-border: #dde1ee;
+  --color-border-strong: #c3c9dd;
+  --color-text: #10152b;
+  --color-text-muted: #4a5578;
+  --color-text-faint: #6b759a;
+  --color-accent: #3b5fe0;
+  --color-accent-strong: #2846b8;
+  --color-accent-soft: #e8ecff;
+
+  --color-status-critical: #d6493f;
+  --color-status-high: #b9660f;
+  --color-status-medium: #966a00;
+  --color-status-low: #1f9d73;
+  --color-status-info: #565f85;
+  --color-status-positive: #1f9d73;
+  --color-status-negative: #d6493f;
+
+  --chart-grid: rgba(71, 85, 105, 0.15);
+  --chart-tick: #4a5578;
+  --chart-historical: #6b7280;
+  --chart-predicted: #2952a3;
+  --chart-predicted-fill: rgba(41, 82, 163, 0.1);
+  --chart-band-fill: rgba(41, 82, 163, 0.08);
+  --chart-volume-bar: rgba(71, 85, 105, 0.35);
+  --chart-point-border: rgba(16, 21, 43, 0.35);
+  --chart-quadrant-line: rgba(71, 85, 105, 0.45);
 }
 
 html {
   color-scheme: dark;
+}
+
+html[data-theme='light'] {
+  color-scheme: light;
 }
 
 body {

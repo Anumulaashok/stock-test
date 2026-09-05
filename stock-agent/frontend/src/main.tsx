@@ -11,6 +11,7 @@ import '@fontsource/jetbrains-mono/700.css'
 import './index.css'
 import { routes } from './routes/routes'
 import { AuthProvider } from './auth/AuthContext'
+import { ThemeProvider } from './theme/ThemeContext'
 
 /**
  * `/__dev/ml-panels` -- a fixture gallery for every ML-panel state
@@ -106,8 +107,10 @@ const router = createBrowserRouter(
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
-    <AuthProvider>
-      <RouterProvider router={router} />
-    </AuthProvider>
+    <ThemeProvider>
+      <AuthProvider>
+        <RouterProvider router={router} />
+      </AuthProvider>
+    </ThemeProvider>
   </StrictMode>,
 )

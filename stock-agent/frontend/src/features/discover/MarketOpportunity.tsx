@@ -5,6 +5,7 @@ import { AsyncSection } from '../../components/ui/AsyncSection'
 import { Skeleton } from '../../components/ui/Skeleton'
 import { formatDateTime } from '../../lib/format'
 import { SectorCard } from './SectorCard'
+import { SectorHeatmap } from './SectorHeatmap'
 import { SectorStockTable } from './SectorStockTable'
 
 function SectorGridSkeleton() {
@@ -27,6 +28,7 @@ function SectorGridSkeleton() {
 export function MarketOpportunity() {
   const [refreshToken, setRefreshToken] = useState(0)
   const [selectedSector, setSelectedSector] = useState<string | null>(null)
+  const [view, setView] = useState<'cards' | 'heatmap'>('cards')
   const state = useAsync(() => fetchMarketOpportunity(refreshToken > 0), [refreshToken])
   const refreshing = state.status === 'loading' && refreshToken > 0
 
@@ -39,14 +41,34 @@ export function MarketOpportunity() {
           </h1>
           <p className="support-text">Sectors ranked by average deterministic score across curated constituents.</p>
         </div>
-        <button
-          type="button"
-          onClick={() => setRefreshToken((n) => n + 1)}
-          disabled={state.status === 'loading'}
-          className="btn-secondary shrink-0 px-3 py-1.5 text-xs"
-        >
-          {refreshing ? 'Refreshing…' : 'Refresh'}
-        </button>
+        <div className="flex shrink-0 items-center gap-2">
+          <div role="group" aria-label="Sector view" className="flex rounded-[var(--radius-sm)] border border-[var(--color-border)] p-0.5 text-xs">
+            <button
+              type="button"
+              onClick={() => setView('cards')}
+              aria-pressed={view === 'cards'}
+              className={`rounded-[3px] px-2.5 py-1 font-medium ${view === 'cards' ? 'bg-[var(--color-accent-soft)] text-[var(--color-accent-strong)]' : 'text-[var(--color-text-faint)]'}`}
+            >
+              Cards
+            </button>
+            <button
+              type="button"
+              onClick={() => setView('heatmap')}
+              aria-pressed={view === 'heatmap'}
+              className={`rounded-[3px] px-2.5 py-1 font-medium ${view === 'heatmap' ? 'bg-[var(--color-accent-soft)] text-[var(--color-accent-strong)]' : 'text-[var(--color-text-faint)]'}`}
+            >
+              Heatmap
+            </button>
+          </div>
+          <button
+            type="button"
+            onClick={() => setRefreshToken((n) => n + 1)}
+            disabled={state.status === 'loading'}
+            className="btn-secondary px-3 py-1.5 text-xs"
+          >
+            {refreshing ? 'Refreshing…' : 'Refresh'}
+          </button>
+        </div>
       </header>
 
       <AsyncSection
@@ -84,17 +106,21 @@ export function MarketOpportunity() {
                 </ul>
               )}
 
-              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-                {data.sectors.map((sector, i) => (
-                  <SectorCard
-                    key={sector.sector}
-                    sector={sector}
-                    rank={i + 1}
-                    selected={sector.sector === selected.sector}
-                    onSelect={() => setSelectedSector(sector.sector)}
-                  />
-                ))}
-              </div>
+              {view === 'heatmap' ? (
+                <SectorHeatmap sectors={data.sectors} selectedSector={selected.sector} onSelect={setSelectedSector} />
+              ) : (
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+                  {data.sectors.map((sector, i) => (
+                    <SectorCard
+                      key={sector.sector}
+                      sector={sector}
+                      rank={i + 1}
+                      selected={sector.sector === selected.sector}
+                      onSelect={() => setSelectedSector(sector.sector)}
+                    />
+                  ))}
+                </div>
+              )}
 
               <SectorStockTable sector={selected} />
             </>

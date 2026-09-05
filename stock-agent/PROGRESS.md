@@ -135,7 +135,19 @@ Did not do a dedicated fixture-route screenshot for this slice (G7) -- the new m
 
 **Two Wave 7 items logged to `BACKLOG.md`, not built:** bulk-analyze queue with remaining-quota display (no real quota figure exists anywhere in the backend to read -- would be fabricated) and watchlist notes/tags/conviction (needs new `WatchlistItemRow` columns + a PATCH endpoint, genuine schema work, not yet D10-equivalent authorized).
 
-**Not yet attempted in Wave 7:** sector heatmap toggle on Discover, "Ask Stock Agent" scoped to portfolio/screen/comparison, the responsive pass (Fundamentals horizontal scroll -- note: `FinancialSection`'s tables are only 3 columns per category, not obviously the wide multi-period table the brief's wording assumes; needs a closer look before committing to an approach), and restrained micro-interactions. Large remaining surface area -- continuing in subsequent slices rather than one pass.
+**Wave 7, slice 2 — Sector heatmap and responsive nav, done.** `SectorHeatmap` toggles beside Discover's existing card grid: tiles colored by a real `sector_score` band (`sectorHeatBand`, a pure categorization of an existing value -- I2-safe), arrow-key traversable via a roving tabindex, a legend, and the score number always visible alongside color (G8). Verified against the real local backend via Playwright, not a fixture -- no sector reached the "strong" band in the live data and none was shown, confirming nothing is fabricated.
+
+`SideNav` previously vanished entirely below its `lg:flex` breakpoint with **no replacement at all** -- a real gap, not a brief assumption mismatch. Now three synchronized layers share one `NavLinks` item list: the full labeled sidebar (`lg+`), an icon-only rail with title-attribute tooltips (`md`-`lg`), and a slide-in drawer below `md` (`MobileNavDrawer`, opened via a hamburger button in `TopBar`, same open-by-window-event pattern as `CommandPalette` so no state needed lifting through `AppShell`). Verified all three breakpoints via Playwright screenshots (1280px/900px/420px) plus the drawer's open state.
+
+**Fundamentals' responsive item turned out to be a non-issue, not a gap:** checked the real `/stock/TCS/fundamentals` page at 375px via Playwright -- `FinancialSection`'s tables are only 3 columns (metric/value/status) and reflow cleanly with no horizontal overflow. The brief's "Fundamentals gets horizontal scroll with sticky metric column" wording assumes a wide multi-period table that doesn't exist in this app's real data model (one value per metric, not one column per period). Screener's own table (6 columns: ticker/company/score/band/date/status) already has `overflow-x-auto` from Wave 5. Nothing to fix here.
+
+409/417 (all told, from this session's start) -- see individual test-file counts per slice above; the 4 recurring failures are pre-existing `AuthContext`/`WatchlistSummary` flakiness unrelated to any Wave 7 change (confirmed identical on a clean stash). `tsc -b`/`oxlint`/`vite build` clean throughout.
+
+**Two more Wave 7 items logged to `BACKLOG.md`, not built:** "Ask Stock Agent" scoped to portfolio/screen/comparison (only one Q&A endpoint exists, `ask_ticker_question`, and it only accepts a ticker -- a scoped variant needs its own backend context-assembly and grounding citation, not a frontend reshape).
+
+**Not attempted this session: restrained micro-interactions** (one hover treatment, one tab transition, one count-up) -- deliberately deferred rather than inventing ad hoc interaction choices without a clearer design reference; worth a dedicated pass once the rest of Wave 7/8 settles rather than bolting on incrementally.
+
+**Wave 7 is now functionally complete for everything buildable without new backend authorization.** Two items remain backend-gated (bulk-analyze quota, watchlist notes/tags/conviction, Ask Stock Agent scoping -- 3 total across both slices), all in `BACKLOG.md`. Micro-interactions remain a deliberately deferred polish pass.
 
 ---
 

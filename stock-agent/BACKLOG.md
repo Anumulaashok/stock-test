@@ -206,6 +206,16 @@ Backend/infra proposals raised instead of building a frontend workaround, per `d
 
 ---
 
+## Ask Stock Agent scoped to portfolio/screen/comparison (Wave 7)
+
+**Needed:** the master brief asks for "Ask Stock Agent" to answer questions grounded in a portfolio, a screener result set, or a comparison -- not just a single ticker's research, which is all it does today.
+
+**Proposed shape:** `app/api/qa.py` currently exposes only `ask_ticker_question` (one ticker's persisted research as grounding context). A portfolio/screen/comparison-scoped variant needs its own context-assembly logic -- e.g. `POST /api/v1/qa/portfolio` gathering the caller's holdings + each one's latest snapshot, or `POST /api/v1/qa/screen` gathering the current filtered result set's rows -- each citing which rows/metrics grounded the answer, the same way the ticker-scoped version already cites its research run.
+
+**Why not built into the frontend:** there is exactly one Q&A endpoint (`ask_ticker_question`), and it only accepts a ticker. Answering a portfolio/screen/comparison-scoped question would mean either fabricating grounding client-side (I1) or silently reusing the single-ticker endpoint in a way that doesn't actually reflect the multi-row context the user is looking at.
+
+---
+
 ## Not backlog — resolved
 
 **Alerts backend** (originally Wave 4/5 backend request) is **authorized** under `docs/AUTONOMY.md` D10 (additive tables only, `app/portfolio/service.py` pattern, evaluate-on-read). This is Wave 5 build scope, not a backlog proposal.

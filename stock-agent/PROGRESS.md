@@ -151,6 +151,20 @@ Did not do a dedicated fixture-route screenshot for this slice (G7) -- the new m
 
 ---
 
+**Wave 8 — Light theme, done.** Per D8: one `:root[data-theme='light']` override block for the ~19 `--color-*`/`--chart-*` tokens (12 core palette + 7 status colors, plus 9 new `--chart-*` tokens introduced this wave for the two Chart.js components -- slightly more than D8's "~15" estimate since accessible-contrast status colors needed real darkening, not just a hue swap). `ThemeProvider`/`useTheme` set `data-theme` on `<html>` and persist the choice; dark stays the designed-for default, light is an explicit toggle (`ThemeToggle`, sun/moon, in `TopBar`), never a system-preference follow.
+
+`PriceChart` and `AccuracyScatterChart` previously hardcoded every series/grid/tick/border color as a literal hex/rgba -- confirmed via `grep` that Chart.js was never actually reading any CSS variable despite D8's framing that it already did. Both now read colors through `chartTheme.readChartColors()` inside the effect that builds the chart, with `theme` added to that effect's dependency array so a theme switch triggers a real rebuild with fresh values (canvas isn't styled by CSS -- Chart.js never sees a `data-theme` change on its own). A few colors would have been outright broken on light without this: `AccuracyScatterChart`'s point border was `rgba(255,255,255,0.5)` (a white halo, invisible-to-backwards on white) and one border was hardcoded `#eef1fb` -- literally the dark theme's `--color-text` value, which would have blended into a light background instead of standing out.
+
+**A real self-inflicted CSS bug caught before it shipped, not assumed fixed:** the first light-theme screenshot showed no visual change at all despite `data-theme="light"` correctly set on `<html>`. Traced it to the light override block's own doc comment containing a literal `--color-*/--chart-*` substring -- the `*/` inside that text prematurely closed the CSS comment, turning everything after it up to the next `*/` into raw (garbage) CSS, and corrupting the following `:root[data-theme='light']` selector into invalid `: root[...]` in the browser-parsed stylesheet (confirmed via `document.styleSheets` -- the light rule was completely absent from the parsed sheet, not just mis-applied). Fixed by rewording the comment to avoid embedding a `*/`-shaped substring; verified the fix by re-fetching the served CSS and re-screenshotting both a page and a chart in light mode.
+
+**A real test-environment discovery, saved to memory for future sessions:** this project's vitest/jsdom `localStorage` global has no working `getItem`/`setItem`/`removeItem` at all (confirmed by direct probing -- every call throws `TypeError`). `ThemeContext`'s try/catch around persistence is load-bearing here, not defensive-code theater; `ThemeContext.test.tsx` stubs a real in-memory implementation via `vi.stubGlobal` to actually exercise the persistence path rather than only ever hitting its fallback branch.
+
+420/424 frontend tests (the same 4 pre-existing `AuthContext`/`WatchlistSummary` failures, confirmed unrelated), `tsc -b`/`oxlint`/`vite build` clean. Verified via Playwright: light theme screenshotted on `/discover` (cards + heatmap), `/stock/TCS` overview (price+volume chart), and `/stock/TCS/forecast` (predicted line + confidence band) -- all legible with no color-on-color collisions; dark theme re-checked afterward to confirm no regression.
+
+**Wave 8 is functionally complete.** This closes every wave in `docs/MASTER_BRIEF.md` §6 that was reachable without new backend authorization -- remaining backend-gated items across all waves are enumerated in `BACKLOG.md`.
+
+---
+
 **Wave 4 is now functionally complete** (research-run diff built; the other 3 asks correctly deferred to `BACKLOG.md` as genuine backend gaps; coverage-on-signal-card already existed from Wave 2). Continuing to Wave 5 next: Alerts backend is D10-authorized (additive tables, `app/portfolio/service.py` pattern, evaluate-on-read) -- starting there since it's clearly pre-approved, ahead of Screener/Comparison/News frontend work which hasn't been scoped this session.
 
 ---

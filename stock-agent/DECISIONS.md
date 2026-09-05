@@ -81,3 +81,17 @@ Append-only. Every judgment call that would previously have been a question gets
 **Chosen:** did not build either "regime bands" (would need a historical per-day regime series that doesn't exist anywhere) or a "relative strength vs Nifty" toggle (no raw numeric field exists to plot). Logged both as `BACKLOG.md` proposals.
 
 **Why:** I1 forbids synthesizing a historical regime-band series from a single current classification, and there is nothing honest to plot for relative strength without new backend exposure — matches the D11 spirit even though this isn't literally D11's blocked item.
+
+---
+
+## 2026-09-05 — Named anti-pattern: current-value-as-full-width-line
+
+**Finding (user-caught in review):** the current-SMA "reference lines" shipped in the prior slice were real, backend-computed numbers (not fabricated), but a full-width horizontal line at *today's* value visually crosses the historical price series at points where no crossing actually occurred — because the SMA was at a different level back then. A viewer reads crossings off the chart visually; that's the entire reason `CrossoverBadge` exists next to it. The chart was arguing against its own badge. Labeling the line doesn't fix this — nobody reads the axis label before their eye finds the intersection.
+
+**Rule (named, to survive this session):** **current-value-as-full-width-line** is an anti-pattern. Any time a component holds a value that is only valid *as of now* — not a historical series — it must never be drawn as a line spanning the full date axis. This is a G3 case: suppress the inference chrome (the implied "this held true throughout history"), keep the real observation (today's value is real and worth showing).
+
+**Fix applied:** `PriceChart.tsx` gained a new `edgeMarkers` prop/plugin — a short stub + dot + label at the chart's right edge only, where the value is actually valid, instead of `referenceLines`' full-width dashed line. `PriceChartSection.tsx`'s `currentSmaReferenceLines` renamed `currentSmaEdgeMarkers`, now returning `PriceChartEdgeMarker[]` used via the new prop. `referenceLines` itself is unchanged and still exists for a value genuinely constant across the whole visible history (not touched, not deprecated).
+
+**Known remaining instance of the same anti-pattern, not fixed:** `ForecastSection.tsx`'s pre-existing `HorizonChart` maps `data.moving_averages` into the same kind of full-width `referenceLines` for the identical reason (current SMA snapshot, no historical series) — this is pre-existing code from before this session, so per the master brief's stop-and-ask rule ("deleting or rewriting existing code you didn't write this session") it was not touched without being asked. Flagged here and to the user directly; retrofit is a one-line prop swap (`referenceLines` → `edgeMarkers`) if authorized.
+
+**What would reverse it:** never for the general rule. For the specific `ForecastSection.tsx` instance, an explicit go-ahead to touch that file would let the same fix be applied there.

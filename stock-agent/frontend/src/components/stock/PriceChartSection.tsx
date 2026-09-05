@@ -1,5 +1,5 @@
 import { CrossoverBadge } from '../SignalBadge'
-import { PriceChart, type ForecastLineChartReferenceLine, type PriceChartVolumePoint } from '../PriceChart'
+import { PriceChart, type PriceChartEdgeMarker, type PriceChartVolumePoint } from '../PriceChart'
 import { allHistoricalPrices } from '../ForecastSection'
 import type { ReportForecastSection } from '../../types/backend'
 
@@ -21,21 +21,25 @@ export function historicalVolume(forecast: ReportForecastSection): PriceChartVol
 
 const SMA_COLOR = ['#8a6d00', '#7a3ab3']
 
-/** The current 50/200-day SMA as flat reference lines -- NOT a moving
- * average traced across history. `historical_prices`/`daily_price_
- * history` carries a per-day DMA50/DMA200 series in the DB (Screener
- * import), but that series is never threaded through to
- * `report.forecast` (see BACKLOG.md) -- so this shows the one real,
- * backend-computed number that IS on the report: today's SMA value,
- * exactly as `ForecastSection`'s own indicator toggle already does.
+/** The current 50/200-day SMA as right-edge markers -- NOT a full-width
+ * line. `historical_prices`/`daily_price_history` carries a per-day
+ * DMA50/DMA200 series in the DB (Screener import), but that series is
+ * never threaded through to `report.forecast` (see BACKLOG.md) -- so
+ * this shows the one real, backend-computed number that IS on the
+ * report: today's SMA value. A full-width line at that value would
+ * visually cross the price series at points in history where no
+ * crossing actually occurred (a false inference the crossover badge
+ * shown alongside this chart would then be arguing against) -- an edge
+ * marker shows the same number without implying it held throughout
+ * history (G3; see DECISIONS.md, "current-value-as-full-width-line").
  * Exported for unit testing. */
-export function currentSmaReferenceLines(forecast: ReportForecastSection): ForecastLineChartReferenceLine[] {
+export function currentSmaEdgeMarkers(forecast: ReportForecastSection): PriceChartEdgeMarker[] {
   return forecast.moving_averages
     .map((ma, i) => {
       const value = toNumber(ma.value)
-      return value === null ? null : { label: `Current ${ma.window}-day SMA`, value, color: SMA_COLOR[i % SMA_COLOR.length] }
+      return value === null ? null : { label: `${ma.window}-day SMA`, value, color: SMA_COLOR[i % SMA_COLOR.length] }
     })
-    .filter((r): r is ForecastLineChartReferenceLine => r !== null)
+    .filter((r): r is PriceChartEdgeMarker => r !== null)
 }
 
 /**
@@ -65,7 +69,7 @@ export function PriceChartSection({ forecast }: { forecast: ReportForecastSectio
   }
 
   const volume = historicalVolume(forecast)
-  const referenceLines = currentSmaReferenceLines(forecast)
+  const edgeMarkers = currentSmaEdgeMarkers(forecast)
 
   return (
     <div className="flex flex-col gap-2">
@@ -73,10 +77,11 @@ export function PriceChartSection({ forecast }: { forecast: ReportForecastSectio
         <h3 className="card-heading">Price</h3>
         <CrossoverBadge crossover={forecast.crossover} />
       </div>
-      <PriceChart historical={historical} predicted={[]} referenceLines={referenceLines} volume={volume} ariaLabel="Price chart" />
-      {referenceLines.length > 0 && (
+      <PriceChart historical={historical} predicted={[]} edgeMarkers={edgeMarkers} volume={volume} ariaLabel="Price chart" />
+      {edgeMarkers.length > 0 && (
         <p className="support-text text-xs">
-          SMA lines show today's 50/200-day average level, not a moving trace across history.
+          SMA markers show today's 50/200-day average level at the right edge only -- not a moving trace across
+          history.
         </p>
       )}
     </div>

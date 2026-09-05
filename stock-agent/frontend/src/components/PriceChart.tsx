@@ -56,6 +56,17 @@ export interface PriceChartVolumePoint {
   value: number
 }
 
+/** A value that is only known "as of now" (e.g. today's SMA level),
+ * never a historical series -- rendered as a short stub at the chart's
+ * right edge only, not a line spanning the full date axis. See
+ * `PriceChart`'s doc comment for why a full-width line is wrong for
+ * this. */
+export interface PriceChartEdgeMarker {
+  label: string
+  value: number
+  color: string
+}
+
 export function formatAxisDate(iso: string): string {
   // Handles both a plain date ("2026-07-24") and a full ISO datetime
   // ("2026-07-24T00:00:00+05:30", e.g. from a provider's timestamp).
@@ -87,6 +98,18 @@ export function formatAxisDate(iso: string): string {
  * axes. An optional volume series renders as a second, shorter bar
  * chart sharing the same date domain directly below.
  *
+ * `referenceLines` spans the full date axis -- use it only for a value
+ * that is genuinely constant across the whole visible history. A value
+ * that is only known "as of now" (e.g. a moving average's *current*
+ * level, when only today's snapshot is available, not the historical
+ * series) must use `edgeMarkers` instead: a full-width line at a
+ * present-day value visually crosses the price series at points in
+ * history where no crossing actually occurred, arguing against any
+ * crossover badge shown alongside it. `edgeMarkers` draws a short stub
+ * at the right edge only, where the value is actually valid -- same
+ * information, no phantom crossings (G3: suppress the inference
+ * chrome, keep the real observation).
+ *
  * Extracted (Wave 2, D4) from the two callers that already existed --
  * `ForecastSection` (deterministic forecast) and `MlForecastPanel` (ML
  * forecast) -- into the one shared price-chart component every stock-
@@ -97,6 +120,7 @@ export function PriceChart({
   predicted,
   markers = [],
   referenceLines = [],
+  edgeMarkers = [],
   band = [],
   volume = [],
   ariaLabel = 'Price chart',
@@ -104,7 +128,12 @@ export function PriceChart({
   historical: ForecastChartPoint[]
   predicted: ForecastChartPoint[]
   markers?: ForecastLineChartMarker[]
+  /** A full-width dashed line -- only for a value genuinely constant
+   * across the whole visible history. See the component doc comment. */
   referenceLines?: ForecastLineChartReferenceLine[]
+  /** A present-day-only value (e.g. current SMA level), drawn as a
+   * short stub at the right edge, never a full-width line. */
+  edgeMarkers?: PriceChartEdgeMarker[]
   /** Optional shaded uncertainty range (e.g. a P10-P90 prediction
    * interval) drawn behind the predicted line, sharing its date axis. */
   band?: ForecastLineChartBandPoint[]
@@ -233,6 +262,10 @@ export function PriceChart({
                 if (ref.value < scale.min) scale.min = ref.value
                 if (ref.value > scale.max) scale.max = ref.value
               }
+              for (const marker of edgeMarkers) {
+                if (marker.value < scale.min) scale.min = marker.value
+                if (marker.value > scale.max) scale.max = marker.value
+              }
               const pad = (scale.max - scale.min) * 0.08 || 1
               scale.min -= pad
               scale.max += pad
@@ -265,6 +298,35 @@ export function PriceChart({
             }
           },
         },
+        {
+          id: 'edgeMarkers',
+          afterDraw(chartInstance) {
+            const { ctx, chartArea, scales } = chartInstance
+            const STUB_WIDTH = 24
+            for (const marker of edgeMarkers) {
+              const y = scales.y.getPixelForValue(marker.value)
+              const stubStart = chartArea.right - STUB_WIDTH
+              ctx.save()
+              ctx.strokeStyle = marker.color
+              ctx.setLineDash([2, 2])
+              ctx.globalAlpha = 0.85
+              ctx.beginPath()
+              ctx.moveTo(stubStart, y)
+              ctx.lineTo(chartArea.right, y)
+              ctx.stroke()
+              ctx.setLineDash([])
+              ctx.fillStyle = marker.color
+              ctx.beginPath()
+              ctx.arc(chartArea.right, y, 2.5, 0, Math.PI * 2)
+              ctx.fill()
+              ctx.globalAlpha = 1
+              ctx.font = '9px sans-serif'
+              ctx.textAlign = 'right'
+              ctx.fillText(marker.label, stubStart - 4, y - 4)
+              ctx.restore()
+            }
+          },
+        },
       ],
     })
 
@@ -272,7 +334,7 @@ export function PriceChart({
       chartRef.current?.destroy()
       chartRef.current = null
     }
-  }, [historical, predicted, markers, referenceLines, band, volume])
+  }, [historical, predicted, markers, referenceLines, edgeMarkers, band, volume])
 
   useEffect(() => {
     const canvas = volumeCanvasRef.current

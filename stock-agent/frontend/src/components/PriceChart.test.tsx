@@ -71,6 +71,21 @@ describe('PriceChart', () => {
     expect(screen.getByRole('img', { name: /forecast price chart/i })).toBeInTheDocument()
   })
 
+  it('renders edge markers without throwing (right-edge stub, not a full-width line)', () => {
+    render(
+      <PriceChart
+        historical={[
+          { date: '2026-08-25', value: 98 },
+          { date: '2026-08-26', value: 99 },
+        ]}
+        predicted={[]}
+        edgeMarkers={[{ label: '50-day SMA', value: 95, color: '#8a6d00' }]}
+        ariaLabel="Price chart"
+      />,
+    )
+    expect(screen.getByRole('img', { name: 'Price chart' })).toBeInTheDocument()
+  })
+
   it('renders no volume sub-chart when volume is omitted', () => {
     render(<PriceChart historical={[{ date: '2026-08-25', value: 98 }]} predicted={[]} ariaLabel="Price chart" />)
     expect(screen.queryByRole('img', { name: /price chart volume/i })).not.toBeInTheDocument()

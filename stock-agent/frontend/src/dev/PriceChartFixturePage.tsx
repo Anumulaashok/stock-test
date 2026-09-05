@@ -103,7 +103,7 @@ export function PriceChartFixturePage() {
         <PriceChartSection forecast={forecastFixture({ historical_prices: HISTORY_NO_VOLUME })} />
       </Section>
 
-      <Section title="No moving averages (no SMA reference lines, no caveat text)">
+      <Section title="No moving averages (no SMA edge markers, no caveat text)">
         <PriceChartSection forecast={forecastFixture({ moving_averages: [] })} />
       </Section>
 

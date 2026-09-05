@@ -1,6 +1,6 @@
 import { render, screen } from '@testing-library/react'
 import { describe, expect, it } from 'vitest'
-import { PriceChartSection, historicalVolume, currentSmaReferenceLines } from './PriceChartSection'
+import { PriceChartSection, historicalVolume, currentSmaEdgeMarkers } from './PriceChartSection'
 import type { ReportForecastSection, ReportHistoricalPricePoint } from '../../types/backend'
 
 const HISTORICAL_PRICES: ReportHistoricalPricePoint[] = [
@@ -50,12 +50,12 @@ describe('historicalVolume', () => {
   })
 })
 
-describe('currentSmaReferenceLines', () => {
-  it('labels lines as the current SMA level, never a moving trace', () => {
-    const lines = currentSmaReferenceLines(forecastFixture())
-    expect(lines).toEqual([
-      { label: 'Current 50-day SMA', value: 95, color: '#8a6d00' },
-      { label: 'Current 200-day SMA', value: 90, color: '#7a3ab3' },
+describe('currentSmaEdgeMarkers', () => {
+  it('returns right-edge markers for the current SMA level, never a full-width reference line', () => {
+    const markers = currentSmaEdgeMarkers(forecastFixture())
+    expect(markers).toEqual([
+      { label: '50-day SMA', value: 95, color: '#8a6d00' },
+      { label: '200-day SMA', value: 90, color: '#7a3ab3' },
     ])
   })
 })

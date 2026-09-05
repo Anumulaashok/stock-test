@@ -2,6 +2,7 @@ import { Outlet } from 'react-router-dom'
 import { SideNav } from './SideNav'
 import { TopBar } from './TopBar'
 import { StickyAskAssistant } from '../components/StickyAskAssistant'
+import { CommandPalette } from '../features/commandPalette/CommandPalette'
 import { DataSourceStatusProvider } from '../dataSources/DataSourceStatusContext'
 import { useCurrentTicker } from '../hooks/useCurrentTicker'
 
@@ -26,6 +27,7 @@ export function AppShell() {
           </div>
         </div>
         <StickyAskAssistant ticker={currentTicker} />
+        <CommandPalette />
       </div>
     </DataSourceStatusProvider>
   )

@@ -1,6 +1,7 @@
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../auth/AuthContext'
 import { SearchBar } from '../components/SearchBar'
+import { OPEN_COMMAND_PALETTE_EVENT } from '../features/commandPalette/CommandPalette'
 import { paths } from '../routes/paths'
 import { Breadcrumbs } from './Breadcrumbs'
 import { AlertsBell } from './AlertsBell'
@@ -16,6 +17,15 @@ export function TopBar() {
           <SearchBar onSubmit={(ticker) => navigate(paths.stock(ticker.trim().toUpperCase()))} disabled={false} />
         </div>
         <div className="flex items-center gap-3 text-right text-sm">
+          <button
+            type="button"
+            onClick={() => window.dispatchEvent(new Event(OPEN_COMMAND_PALETTE_EVENT))}
+            title="Command palette"
+            className="hidden items-center gap-1 rounded-[var(--radius-sm)] border border-[var(--color-border)] px-2.5 py-1.5 font-mono-nums text-xs text-[var(--color-text-faint)] transition-colors hover:border-[var(--color-border-strong)] hover:text-[var(--color-text)] sm:flex"
+          >
+            <span aria-hidden="true">⌘K</span>
+            <span className="sr-only">Open command palette</span>
+          </button>
           <AlertsBell />
           {status === 'authenticated' && (
             <>

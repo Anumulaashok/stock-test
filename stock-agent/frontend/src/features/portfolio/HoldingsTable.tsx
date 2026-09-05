@@ -103,7 +103,19 @@ export function HoldingsTable({
   const [editingId, setEditingId] = useState<string | null>(null)
 
   if (holdings.length === 0) {
-    return <p className="support-text">No holdings yet. Add one below to start tracking it.</p>
+    return (
+      <div className="surface-card flex flex-col items-center gap-3 p-8 text-center">
+        <p className="card-heading">No holdings yet</p>
+        <p className="support-text">Add one to start tracking its unrealized gain against the latest quote.</p>
+        <button
+          type="button"
+          onClick={() => document.getElementById('add-holding-ticker-input')?.focus()}
+          className="btn-primary px-4 py-2 text-sm"
+        >
+          Add your first holding
+        </button>
+      </div>
+    )
   }
 
   return (

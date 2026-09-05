@@ -31,6 +31,7 @@ export function AddTickerForm({ onAdd }: { onAdd: (ticker: string) => Promise<vo
       <label className="flex flex-col gap-1 text-xs sm:w-48">
         <span className="metric-label">Add a ticker</span>
         <input
+          id="add-ticker-input"
           value={value}
           onChange={(e) => setValue(e.target.value.toUpperCase())}
           placeholder="e.g. RELIANCE"

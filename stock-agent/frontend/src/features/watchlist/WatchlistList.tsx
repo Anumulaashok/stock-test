@@ -26,9 +26,16 @@ export function WatchlistList({
 }) {
   if (items.length === 0) {
     return (
-      <div className="surface-card flex flex-col items-center gap-1 p-8 text-center">
+      <div className="surface-card flex flex-col items-center gap-3 p-8 text-center">
         <p className="card-heading">Your watchlist is empty</p>
-        <p className="support-text">Add a ticker above to start tracking it here.</p>
+        <p className="support-text">Add a ticker to start tracking it here.</p>
+        <button
+          type="button"
+          onClick={() => document.getElementById('add-ticker-input')?.focus()}
+          className="btn-primary px-4 py-2 text-sm"
+        >
+          Add your first ticker
+        </button>
       </div>
     )
   }

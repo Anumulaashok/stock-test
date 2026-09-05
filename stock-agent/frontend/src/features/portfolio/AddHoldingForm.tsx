@@ -49,6 +49,7 @@ export function AddHoldingForm({ onAdded }: { onAdded: () => void }) {
       <label className="flex flex-col gap-1 text-xs">
         Ticker
         <input
+          id="add-holding-ticker-input"
           value={ticker}
           onChange={(e) => setTicker(e.target.value.toUpperCase())}
           required

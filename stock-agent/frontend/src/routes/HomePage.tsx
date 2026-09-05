@@ -2,6 +2,7 @@ import { MarketSnapshot } from '../features/home/MarketSnapshot'
 import { TopOpportunities } from '../features/home/TopOpportunities'
 import { RecentResearch } from '../features/home/RecentResearch'
 import { WatchlistSummary } from '../features/home/WatchlistSummary'
+import { PortfolioSnapshot } from '../features/home/PortfolioSnapshot'
 import { formatDate } from '../lib/format'
 
 /**
@@ -26,11 +27,15 @@ export function HomePage() {
       <MarketSnapshot />
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
-        <div className="flex min-w-0 flex-col gap-8 lg:col-span-2">
-          <TopOpportunities />
-          <RecentResearch />
+        <div className="min-w-0 lg:col-span-2">
+          <WatchlistSummary />
         </div>
-        <WatchlistSummary />
+        <PortfolioSnapshot />
+      </div>
+
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+        <TopOpportunities />
+        <RecentResearch />
       </div>
     </main>
   )

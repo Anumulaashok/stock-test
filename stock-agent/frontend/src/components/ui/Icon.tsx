@@ -26,4 +26,7 @@ export const ICON = {
   menu: 'M4 7 H20 M4 12 H20 M4 17 H20',
   sun: 'M12 4 V2 M12 22 V20 M4 12 H2 M22 12 H20 M5.6 5.6 L4.2 4.2 M19.8 19.8 L18.4 18.4 M18.4 5.6 L19.8 4.2 M4.2 19.8 L5.6 18.4 M12 17 A5 5 0 1 0 12 7 A5 5 0 1 0 12 17 Z',
   moon: 'M20 14.5 A8.5 8.5 0 1 1 9.5 4 A6.5 6.5 0 0 0 20 14.5 Z',
+  chevronLeft: 'M15 5 L8 12 L15 19',
+  chevronRight: 'M9 5 L16 12 L9 19',
+  compare: 'M7 8 L3 12 L7 16 M17 8 L21 12 L17 16 M3 12 H21',
 } as const

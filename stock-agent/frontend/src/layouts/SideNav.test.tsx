@@ -1,9 +1,25 @@
-import { render, screen } from '@testing-library/react'
+import { fireEvent, render, screen } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
-import { describe, expect, it, vi } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { SideNav } from './SideNav'
 import * as authContext from '../auth/AuthContext'
 import { DataSourceStatusProvider } from '../dataSources/DataSourceStatusContext'
+
+/** This test env's real `localStorage` has no working methods (see
+ * project memory) -- stub a real in-memory implementation. */
+function stubLocalStorage() {
+  const store = new Map<string, string>()
+  vi.stubGlobal('localStorage', {
+    getItem: (key: string) => store.get(key) ?? null,
+    setItem: (key: string, value: string) => void store.set(key, value),
+    removeItem: (key: string) => void store.delete(key),
+    clear: () => store.clear(),
+  })
+}
+
+afterEach(() => {
+  vi.unstubAllGlobals()
+})
 
 function mockAuth(status: 'authenticated' | 'anonymous') {
   vi.spyOn(authContext, 'useAuth').mockReturnValue({
@@ -49,5 +65,31 @@ describe('SideNav', () => {
 
     expect(screen.queryByText('Sign in required')).not.toBeInTheDocument()
     expect(screen.getAllByRole('link', { name: /watchlist/i }).length).toBeGreaterThanOrEqual(1)
+  })
+
+  it('collapses the full sidebar to icon-only on toggle, and persists the choice', () => {
+    stubLocalStorage()
+    mockAuth('anonymous')
+    renderSideNav()
+
+    expect(screen.getByText('Stock Agent')).toBeInTheDocument()
+
+    fireEvent.click(screen.getByTitle('Collapse sidebar'))
+
+    expect(screen.queryByText('Stock Agent')).not.toBeInTheDocument()
+    expect(localStorage.getItem('stock-agent-sidenav-collapsed')).toBe('1')
+
+    fireEvent.click(screen.getByTitle('Expand sidebar'))
+    expect(screen.getByText('Stock Agent')).toBeInTheDocument()
+  })
+
+  it('starts collapsed when a prior session persisted that choice', () => {
+    stubLocalStorage()
+    localStorage.setItem('stock-agent-sidenav-collapsed', '1')
+    mockAuth('anonymous')
+    renderSideNav()
+
+    expect(screen.queryByText('Stock Agent')).not.toBeInTheDocument()
+    expect(screen.getByTitle('Expand sidebar')).toBeInTheDocument()
   })
 })

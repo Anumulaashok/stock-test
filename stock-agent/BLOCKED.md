@@ -46,3 +46,25 @@ India VIX, or factor-dispersion input anywhere in the app. The same
 `nsepython`-based provider proposed above is the concrete path to a
 real advance/decline snapshot and index history if this gets
 prioritized later.
+
+## Groww brokerage integration (auto-synced real portfolio holdings)
+
+Deprioritized, not infeasible -- deferred at the user's explicit call.
+
+Today `Portfolio` is manually entered (ticker/quantity/avg cost via
+`AddHoldingForm`) -- real data, just hand-maintained. The user has
+access to a Groww MCP connector in-session (`claude_ai_GrowwMCP`) that
+can pull their actual brokerage holdings; a one-off session-side pull
+into the existing manual "Add holding" flow is trivial and was offered,
+but that only seeds this one user's data for this one session, not a
+lasting product feature.
+
+**Proposed unblock (candidate, not decided):** a real Groww brokerage
+adapter as a first-class backend feature -- OAuth token storage per
+user (new DB table + encryption-at-rest, not a plaintext credential
+column), a new provider adapter behind `app/portfolio/` or
+`app/market/providers/`, and a sync job to keep holdings current
+automatically for any user who connects their account. Comparable in
+scope to the `nsepython` integration above -- security-sensitive
+(brokerage credentials/tokens) and needs its own design pass, not
+something to fold into the current styling work.

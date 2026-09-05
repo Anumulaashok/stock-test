@@ -79,6 +79,13 @@ const router = createBrowserRouter(
             return { Component: ScreenerFixturePage }
           },
         },
+        {
+          path: '__dev/portfolio-analytics',
+          lazy: async () => {
+            const { PortfolioAnalyticsFixturePage } = await import('./dev/PortfolioAnalyticsFixturePage')
+            return { Component: PortfolioAnalyticsFixturePage }
+          },
+        },
       ]
     : routes,
 )

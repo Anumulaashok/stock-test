@@ -145,7 +145,7 @@ Did not do a dedicated fixture-route screenshot for this slice (G7) -- the new m
 
 **Two more Wave 7 items logged to `BACKLOG.md`, not built:** "Ask Stock Agent" scoped to portfolio/screen/comparison (only one Q&A endpoint exists, `ask_ticker_question`, and it only accepts a ticker -- a scoped variant needs its own backend context-assembly and grounding citation, not a frontend reshape).
 
-**Not attempted this session: restrained micro-interactions** (one hover treatment, one tab transition, one count-up) -- deliberately deferred rather than inventing ad hoc interaction choices without a clearer design reference; worth a dedicated pass once the rest of Wave 7/8 settles rather than bolting on incrementally.
+**Micro-interactions, done (added after Wave 8, closing this out).** Checked before building: the hover treatment (`.surface-card--interactive:hover`) and tab transition (`StockTabBar`'s `transition-colors`) already existed pre-session -- only the count-up was missing. Added `useCountUp`, spent on exactly one numeric (the hero Investment View score on the stock Overview page), respecting `prefers-reduced-motion` (jumps straight to the real value, verified via Playwright with `reducedMotion: 'reduce'`). Verified the real animation via Playwright too -- sampled the DOM every 120ms and confirmed it genuinely climbs (15→29→41→53→66→70) rather than just asserting the end state.
 
 **Wave 7 is now functionally complete for everything buildable without new backend authorization.** Two items remain backend-gated (bulk-analyze quota, watchlist notes/tags/conviction, Ask Stock Agent scoping -- 3 total across both slices), all in `BACKLOG.md`. Micro-interactions remain a deliberately deferred polish pass.
 

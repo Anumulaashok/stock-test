@@ -2,6 +2,8 @@
 
 Rewritten after every slice. Current wave, current slice, what's committed, what's in flight, what's blocked.
 
+**Push status: blocked, 24 commits unpushed** (as of the Wave 2 boundary, 2026-09-05). `git push origin feature/stock-intelligence-redesign` fails with a 403 (permission denied for the configured git credentials against `Anumulaashok/stock-test.git`) -- a credentials issue on the user's end, being fixed there, not fixable from this session. **Retry policy: once per wave boundary, not per slice** (per explicit instruction) -- so this count should only update at wave boundaries, not every commit. If a rate-limit gap ends this session before it's resolved, all commits below exist only on this machine -- check `git log --oneline origin/feature/stock-intelligence-redesign..HEAD` for the current unpushed count before assuming anything is on the remote.
+
 ## Current wave
 
 **Wave 1 — complete and committed. Wave 2 in progress.**
@@ -40,7 +42,24 @@ Operating mode: in-session, report-and-wait at wave boundaries, commit and push 
 - New dev fixture route `/__dev/price-chart` (7 states: golden/death/neutral/no crossover, volume on/off, no-SMA, empty), eyeballed — no issues found.
 - Verification floor: 269/269 vitest, `tsc -b` clean, `oxlint` clean, `vite build` clean, all three dev fixture routes confirmed absent from `dist/`.
 
-**Not yet started in Wave 2:** Golden/Death Cross badge is done; still remaining — resolved-prediction overlay (Wave 1's deferred secondary view), the empty state is done, the signal card (score gauge/band pill/top drivers/regime badge/provider-freshness/coverage indicator). Regime bands and RS toggle are blocked pending the backend proposals above (not fabricating a version). Score sparklines remain correctly unbuilt (D2/D11).
+**Wave 2, slice 2 — done, not yet committed.** User-caught fix + resolved-prediction overlay:
+
+- **G3 fix:** the slice-1 SMA reference lines were a real defect (full-width line at a current-only value implies false historical crossings, arguing against `CrossoverBadge`). `PriceChart.tsx` gained `edgeMarkers` (short right-edge stub, no full-width line); `PriceChartSection.tsx` switched to it. Named the anti-pattern ("current-value-as-full-width-line") in `DECISIONS.md` for future metrics. One known remaining instance (`ForecastSection.tsx`'s `HorizonChart`) flagged but not touched -- pre-existing code, not written this session.
+- `docs/MASTER_BRIEF.md`'s Wave 2 DMA claim corrected in place, pointing at the `BACKLOG.md` entry.
+- **Resolved-prediction overlay** (Wave 1's deferred secondary view): `MlForecastPanel.tsx` now fetches `fetchMlForecastHistory(ticker, selectedHorizon, 200)` (same endpoint the accuracy panel already uses -- local DB read, not metered) and plots each already-resolved prediction's predicted price as an amber marker on the AI forecast chart, alongside the real historical/predicted lines. Pending predictions correctly excluded (nothing to compare yet).
+- Eyeballed on `/__dev/ml-panels`'s new fixture section: amber markers clearly distinguishable from the gray historical line and blue predicted/band region; a materially-wrong past prediction visibly separates from the real price line.
+- Verification floor: 275/275 vitest, `tsc -b` clean, `oxlint` clean, `vite build` clean, all fixture routes confirmed absent from `dist/`.
+
+**Push status:** all commits through this slice are local only. `git push origin feature/stock-intelligence-redesign` fails with a 403 (permission denied for the configured git credentials, `Ashok-Raga`, against `Anumulaashok/stock-test.git`) -- a credentials/access issue outside what this session can fix. Flagged to the user; retried once after the first failure, not retried further.
+
+**Wave 2, slice 3 — done, not yet committed.** Signal card:
+
+- New `SignalCard.tsx` atop `OverviewTab`: score bar (color by band), band pill, top-1 positive/watch item (analyst-first, category-reason fallback -- same pattern `WhyThisScore` uses, duplicated locally rather than refactoring that pre-existing file without being asked), coverage ("N/M inputs" from `scoring.categories[].status`), and a provenance line (`market.source`/`.freshness`/`.market_timestamp`) -- all reshaped from `report`, no new fetch.
+- **No regime badge** -- deferred alongside regime bands/RS per explicit instruction; logged in `DECISIONS.md` (same ML-only data source either way).
+- Eyeballed on new `/__dev/signal-card` fixture route (5 states). One near-miss: a screenshot appeared to show a bug (fallback content rendering when it shouldn't), but a direct DOM-content dump proved the component was correct throughout -- the screenshot was misread, not a defect. Recorded as a caution about trusting a single screenshot glance over ground truth when they'd disagree.
+- Verification floor: 283/283 vitest, `tsc -b` clean (one real type error caught and fixed: `toDisplayNumber` returns a formatted string, not a number -- needed a separate numeric parse for the bar-width calculation), `oxlint` clean, `vite build` clean, all 4 fixture routes confirmed absent from `dist/`.
+
+**Wave 2 is now functionally complete** (D4 extraction, price chart + DMA/crossover/volume on Technical+Overview, resolved-prediction overlay, signal card). Regime bands, RS toggle, and the signal card's regime badge all correctly deferred, not fabricated. Score sparklines correctly unbuilt (D2/D11). Nothing in this wave committed yet beyond the earlier-pushed slice-1-fix commits.
 
 ## Blocked
 

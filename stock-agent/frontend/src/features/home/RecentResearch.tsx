@@ -4,7 +4,8 @@ import { AsyncSection } from '../../components/ui/AsyncSection'
 import { fetchRecentResearch } from '../../api/research'
 import { paths } from '../../routes/paths'
 import { toDisplayNumber, formatDate } from '../../lib/format'
-import type { RecentResearchEntry } from '../../types/backend'
+import { toneFromBand, TONE_CLASS } from '../../lib/signals'
+import type { RecentResearchEntry, ScoreBand } from '../../types/backend'
 
 const PREVIEW_LIMIT = 8
 
@@ -13,6 +14,7 @@ function score(value: string | null): string {
 }
 
 function ResearchCard({ entry }: { entry: RecentResearchEntry }) {
+  const tone = toneFromBand((entry.band as ScoreBand | null) ?? null)
   return (
     <Link
       to={paths.stock(entry.ticker)}
@@ -20,7 +22,7 @@ function ResearchCard({ entry }: { entry: RecentResearchEntry }) {
     >
       <div className="flex items-center justify-between gap-2">
         <span className="text-[13px] font-semibold">{entry.ticker}</span>
-        <span className="metric-value text-base">{score(entry.overall_score)}</span>
+        <span className={`metric-value text-base ${TONE_CLASS[tone]}`}>{score(entry.overall_score)}</span>
       </div>
       <span className="truncate text-[11px] text-[var(--color-text-faint)]">{entry.company_name ?? '—'}</span>
       <span className="text-[10px] text-[var(--color-text-faint)]">

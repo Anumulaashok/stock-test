@@ -2,7 +2,7 @@
 
 Rewritten after every slice. Current wave, current slice, what's committed, what's in flight, what's blocked.
 
-**Push status: blocked, 70 commits unpushed** (as of the final completion boundary, 2026-09-05 -- all 8 waves now functionally complete; retried at this boundary, still 403 -- same credentials issue, user is fixing on their end). `git push origin feature/stock-intelligence-redesign` fails with a 403 (permission denied for the configured git credentials against `Anumulaashok/stock-test.git`) -- a credentials issue on the user's end, being fixed there, not fixable from this session. **Retry policy: once per wave boundary, not per slice** (per explicit instruction) -- so this count should only update at wave boundaries, not every commit. If a rate-limit gap ends this session before it's resolved, all commits below exist only on this machine -- check `git log --oneline origin/feature/stock-intelligence-redesign..HEAD` for the current unpushed count before assuming anything is on the remote.
+**Push status: resolved, 2026-09-05.** The recurring 403 was `gh`'s credential helper (`credential.https://github.com.helper=!gh auth git-credential`) defaulting to the `Ashok-Raga` account, which lacks write access to `Anumulaashok/stock-test`. Fixed by running `gh auth switch --hostname github.com --user Anumulaashok`. All 71 outstanding commits pushed successfully to `origin/feature/stock-intelligence-redesign` (`4605b46..3b10314`). No further action needed unless `gh auth status` shows the active account has flipped back.
 
 ## Current wave
 

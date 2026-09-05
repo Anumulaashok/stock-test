@@ -1,5 +1,6 @@
 import { useAsync } from '../hooks/useAsync'
 import { AsyncSection } from '../components/ui/AsyncSection'
+import { SkeletonHoldingsTable } from '../components/ui/Skeleton'
 import { deleteHolding, fetchPortfolioSummary } from '../api/portfolio'
 import { AddHoldingForm } from '../features/portfolio/AddHoldingForm'
 import { ContributorsDetractors } from '../features/portfolio/ContributorsDetractors'
@@ -27,7 +28,12 @@ export function PortfolioPage() {
         <p className="support-text">Your holdings and their unrealized gain, priced against the latest available quote.</p>
       </div>
 
-      <AsyncSection state={state} onRetry={state.reload} errorTitle="Could not load your portfolio">
+      <AsyncSection
+        state={state}
+        onRetry={state.reload}
+        errorTitle="Could not load your portfolio"
+        skeleton={<SkeletonHoldingsTable />}
+      >
         {(summary) => (
           <div className="flex flex-col gap-4">
             <div className="flex justify-end">

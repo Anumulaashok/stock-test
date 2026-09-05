@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { addWatchlistItem, fetchWatchlistEnriched, removeWatchlistItem } from '../api/portfolio'
 import { AsyncSection } from '../components/ui/AsyncSection'
+import { SkeletonWatchlistRows } from '../components/ui/Skeleton'
 import { AddTickerForm } from '../features/watchlist/AddTickerForm'
 import { WatchlistList } from '../features/watchlist/WatchlistList'
 import { watchlistToCsv } from '../features/watchlist/watchlistCsv'
@@ -51,7 +52,12 @@ export function WatchlistPage() {
 
       <AddTickerForm onAdd={handleAdd} />
 
-      <AsyncSection state={watchlist} onRetry={watchlist.reload} errorTitle="Could not load your watchlist">
+      <AsyncSection
+        state={watchlist}
+        onRetry={watchlist.reload}
+        errorTitle="Could not load your watchlist"
+        skeleton={<SkeletonWatchlistRows />}
+      >
         {(items) => (
           <div className="flex flex-col gap-3">
             <div className="flex flex-wrap items-center justify-end gap-2">

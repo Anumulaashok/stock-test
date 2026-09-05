@@ -105,6 +105,16 @@ Did not do a dedicated fixture-route screenshot for this slice (G7) -- the new m
 
 **Not yet done from the new brief:** `MlForecastPipeline.predict()` still has no direct end-to-end test (only via fakes) -- flagged as a remaining gap, not silently skipped (see `BACKLOG.md`). Frontend Step 29 page structure -- largely already matches (Waves 1-3 built accuracy panel, news impact, analogs, quality/weight visibility, resolved-prediction overlay); a section-by-section audit against the exact Step 29 layout hasn't been done yet.
 
+## Wave 5 (in progress)
+
+**Slice 1 — Alerts backend, done, committed (`ceb2250`).** Full-stack per D10: `AlertRow`/`AlertTriggerRow` (additive only), `AlertService` (user-scoped, follows `app/portfolio/service.py` exactly), `app/api/alerts.py`, registered in `app/main.py`. 5 condition types (price/score/DMA-crossover/regime-change), each reusing an already-existing cheap data source -- no new fetch infrastructure. Evaluates on read only; a condition's data being unavailable is its own status, never collapsed into "not met." 24 new tests, 1140/1140 backend tests pass.
+
+**Screen-entry condition intentionally not implemented** -- no cheap persisted screening/ranking concept exists (`SectorRankingService` recomputes live via the full pipeline), which conflicts with "evaluate on read" being cheap. Logged as a design note, not a `BACKLOG.md` entry (it's not a missing endpoint, it's a scope call: the other 5 condition types are all O(1) reads, this one would be O(universe size) live recomputation).
+
+**Not yet done in Wave 5:** Alerts frontend (page, nav unlock, header bell with unread count), Screener, Comparison, Global News. All backend-authorized-but-not-yet-built or entirely unscoped this session.
+
+---
+
 **Wave 4 is now functionally complete** (research-run diff built; the other 3 asks correctly deferred to `BACKLOG.md` as genuine backend gaps; coverage-on-signal-card already existed from Wave 2). Continuing to Wave 5 next: Alerts backend is D10-authorized (additive tables, `app/portfolio/service.py` pattern, evaluate-on-read) -- starting there since it's clearly pre-approved, ahead of Screener/Comparison/News frontend work which hasn't been scoped this session.
 
 ---

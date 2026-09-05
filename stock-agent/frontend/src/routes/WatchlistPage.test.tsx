@@ -6,6 +6,7 @@ import { renderWithRouter } from '../test/renderWithRouter'
 import * as portfolioApi from '../api/portfolio'
 import { ApiError } from '../api/client'
 import { formatDate } from '../lib/format'
+import * as csvLib from '../lib/csv'
 import type { WatchlistItemEnriched } from '../types/backend'
 
 function enrichedItem(overrides: Partial<WatchlistItemEnriched> = {}): WatchlistItemEnriched {
@@ -61,6 +62,29 @@ describe('WatchlistPage', () => {
     renderWithRouter(<WatchlistPage />)
 
     expect(await screen.findByText('81')).toBeInTheDocument()
+  })
+
+  it('exports the watchlist as CSV on click, and disables export when empty', async () => {
+    const downloadSpy = vi.spyOn(csvLib, 'downloadCsv').mockImplementation(() => {})
+    vi.spyOn(portfolioApi, 'fetchWatchlistEnriched').mockResolvedValue([enrichedItem()])
+
+    renderWithRouter(<WatchlistPage />)
+    await screen.findByText('RELIANCE')
+
+    const exportButton = screen.getByRole('button', { name: /export csv/i })
+    expect(exportButton).toBeEnabled()
+    await userEvent.click(exportButton)
+
+    expect(downloadSpy).toHaveBeenCalledWith('watchlist', expect.stringContaining('RELIANCE'))
+  })
+
+  it('disables CSV export when the watchlist is empty', async () => {
+    vi.spyOn(portfolioApi, 'fetchWatchlistEnriched').mockResolvedValue([])
+
+    renderWithRouter(<WatchlistPage />)
+    await screen.findByText(/your watchlist is empty/i)
+
+    expect(screen.getByRole('button', { name: /export csv/i })).toBeDisabled()
   })
 
   it('shows an empty state when the watchlist has no items', async () => {

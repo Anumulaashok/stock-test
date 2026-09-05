@@ -5,6 +5,7 @@ import { renderWithRouter } from '../test/renderWithRouter'
 import { PortfolioPage } from './PortfolioPage'
 import * as portfolioApi from '../api/portfolio'
 import { ApiError } from '../api/client'
+import * as csvLib from '../lib/csv'
 import type { PortfolioSummary } from '../types/backend'
 
 function buildSummary(overrides: Partial<PortfolioSummary> = {}): PortfolioSummary {
@@ -53,6 +54,25 @@ describe('PortfolioPage', () => {
 
     expect(await screen.findByRole('alert')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /retry/i })).toBeInTheDocument()
+  })
+
+  it('exports holdings as CSV on click', async () => {
+    const downloadSpy = vi.spyOn(csvLib, 'downloadCsv').mockImplementation(() => {})
+    vi.spyOn(portfolioApi, 'fetchPortfolioSummary').mockResolvedValue(buildSummary())
+    renderWithRouter(<PortfolioPage />)
+    await screen.findByText('ACME')
+
+    await userEvent.click(screen.getByRole('button', { name: /export csv/i }))
+
+    expect(downloadSpy).toHaveBeenCalledWith('portfolio', expect.stringContaining('ACME'))
+  })
+
+  it('disables CSV export when there are no holdings', async () => {
+    vi.spyOn(portfolioApi, 'fetchPortfolioSummary').mockResolvedValue(buildSummary({ holdings: [] }))
+    renderWithRouter(<PortfolioPage />)
+    await screen.findByText(/no holdings yet/i)
+
+    expect(screen.getByRole('button', { name: /export csv/i })).toBeDisabled()
   })
 
   it('shows an honest empty state with no invented sector/allocation data', async () => {

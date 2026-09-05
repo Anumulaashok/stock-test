@@ -3,7 +3,9 @@ import { AsyncSection } from '../components/ui/AsyncSection'
 import { deleteHolding, fetchPortfolioSummary } from '../api/portfolio'
 import { AddHoldingForm } from '../features/portfolio/AddHoldingForm'
 import { HoldingsTable } from '../features/portfolio/HoldingsTable'
+import { holdingsToCsv } from '../features/portfolio/portfolioCsv'
 import { PortfolioSummaryStats } from '../features/portfolio/PortfolioSummaryStats'
+import { downloadCsv } from '../lib/csv'
 
 /** Your holdings and their live performance -- extracted from
  * `DashboardPage.tsx`'s inlined portfolio section. Only renders behind
@@ -26,6 +28,16 @@ export function PortfolioPage() {
       <AsyncSection state={state} onRetry={state.reload} errorTitle="Could not load your portfolio">
         {(summary) => (
           <div className="flex flex-col gap-4">
+            <div className="flex justify-end">
+              <button
+                type="button"
+                onClick={() => downloadCsv('portfolio', holdingsToCsv(summary.holdings))}
+                disabled={summary.holdings.length === 0}
+                className="btn-secondary px-3 py-1.5 text-xs disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                Export CSV
+              </button>
+            </div>
             <PortfolioSummaryStats summary={summary} />
             <HoldingsTable holdings={summary.holdings} onDelete={handleDelete} onChanged={state.reload} />
           </div>

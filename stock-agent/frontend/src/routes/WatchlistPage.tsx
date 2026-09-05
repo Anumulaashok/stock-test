@@ -2,7 +2,9 @@ import { addWatchlistItem, fetchWatchlistEnriched, removeWatchlistItem } from '.
 import { AsyncSection } from '../components/ui/AsyncSection'
 import { AddTickerForm } from '../features/watchlist/AddTickerForm'
 import { WatchlistList } from '../features/watchlist/WatchlistList'
+import { watchlistToCsv } from '../features/watchlist/watchlistCsv'
 import { useAsync } from '../hooks/useAsync'
+import { downloadCsv } from '../lib/csv'
 
 /**
  * Extracted from `DashboardPage.tsx`'s inlined `WatchlistTable` +
@@ -35,7 +37,21 @@ export function WatchlistPage() {
       <AddTickerForm onAdd={handleAdd} />
 
       <AsyncSection state={watchlist} onRetry={watchlist.reload} errorTitle="Could not load your watchlist">
-        {(items) => <WatchlistList items={items} onRemove={handleRemove} />}
+        {(items) => (
+          <div className="flex flex-col gap-3">
+            <div className="flex justify-end">
+              <button
+                type="button"
+                onClick={() => downloadCsv('watchlist', watchlistToCsv(items))}
+                disabled={items.length === 0}
+                className="btn-secondary px-3 py-1.5 text-xs disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                Export CSV
+              </button>
+            </div>
+            <WatchlistList items={items} onRemove={handleRemove} />
+          </div>
+        )}
       </AsyncSection>
     </main>
   )

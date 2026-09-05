@@ -2,7 +2,7 @@
 
 Rewritten after every slice. Current wave, current slice, what's committed, what's in flight, what's blocked.
 
-**Push status: blocked, 27 commits unpushed** (as of the Wave 3 boundary, 2026-09-05; retried at this boundary per the once-per-wave policy, still 403). `git push origin feature/stock-intelligence-redesign` fails with a 403 (permission denied for the configured git credentials against `Anumulaashok/stock-test.git`) -- a credentials issue on the user's end, being fixed there, not fixable from this session. **Retry policy: once per wave boundary, not per slice** (per explicit instruction) -- so this count should only update at wave boundaries, not every commit. If a rate-limit gap ends this session before it's resolved, all commits below exist only on this machine -- check `git log --oneline origin/feature/stock-intelligence-redesign..HEAD` for the current unpushed count before assuming anything is on the remote.
+**Push status: blocked, 33 commits unpushed** (as of the Wave 4 boundary, 2026-09-05; retried at this boundary per the once-per-wave policy, still 403 -- same credentials issue, user is fixing on their end). `git push origin feature/stock-intelligence-redesign` fails with a 403 (permission denied for the configured git credentials against `Anumulaashok/stock-test.git`) -- a credentials issue on the user's end, being fixed there, not fixable from this session. **Retry policy: once per wave boundary, not per slice** (per explicit instruction) -- so this count should only update at wave boundaries, not every commit. If a rate-limit gap ends this session before it's resolved, all commits below exist only on this machine -- check `git log --oneline origin/feature/stock-intelligence-redesign..HEAD` for the current unpushed count before assuming anything is on the remote.
 
 ## Current wave
 
@@ -103,7 +103,9 @@ Did not do a dedicated fixture-route screenshot for this slice (G7) -- the new m
 
 ---
 
-**Not yet done from the new brief:** `MlForecastPipeline.predict()` still has no direct end-to-end test (only via fakes) -- flagged as a remaining gap, not silently skipped. Frontend Step 29 page structure -- largely already matches (Waves 1-3 built accuracy panel, news impact, analogs, quality/weight visibility, resolved-prediction overlay); a section-by-section audit against the exact Step 29 layout hasn't been done yet.
+**Not yet done from the new brief:** `MlForecastPipeline.predict()` still has no direct end-to-end test (only via fakes) -- flagged as a remaining gap, not silently skipped (see `BACKLOG.md`). Frontend Step 29 page structure -- largely already matches (Waves 1-3 built accuracy panel, news impact, analogs, quality/weight visibility, resolved-prediction overlay); a section-by-section audit against the exact Step 29 layout hasn't been done yet.
+
+**Wave 4 is now functionally complete** (research-run diff built; the other 3 asks correctly deferred to `BACKLOG.md` as genuine backend gaps; coverage-on-signal-card already existed from Wave 2). Continuing to Wave 5 next: Alerts backend is D10-authorized (additive tables, `app/portfolio/service.py` pattern, evaluate-on-read) -- starting there since it's clearly pre-approved, ahead of Screener/Comparison/News frontend work which hasn't been scoped this session.
 
 ---
 

@@ -141,4 +141,26 @@ describe('MarketOpportunity', () => {
 
     expect(await screen.findByText('Technology')).toBeInTheDocument()
   })
+
+  it('toggles to the heatmap view, keeping sector selection working', async () => {
+    mocked.mockResolvedValue(
+      buildResult({
+        sectors: [
+          buildSector({ sector: 'Technology', top_stocks: [buildStock({ ticker: 'ACME' })] }),
+          buildSector({ sector: 'Energy', top_stocks: [buildStock({ ticker: 'FUEL', company_name: 'Fuel Co' })] }),
+        ],
+      }),
+    )
+
+    renderWithRouter(<MarketOpportunity />)
+    await screen.findByText('Technology')
+
+    await userEvent.click(screen.getByRole('button', { name: 'Heatmap' }))
+
+    expect(screen.getByRole('grid', { name: /sector heatmap/i })).toBeInTheDocument()
+    expect(screen.getByRole('gridcell', { name: /energy/i })).toBeInTheDocument()
+
+    await userEvent.click(screen.getByRole('gridcell', { name: /energy/i }))
+    expect(screen.getByRole('heading', { name: /Top stocks · Energy/ })).toBeInTheDocument()
+  })
 })

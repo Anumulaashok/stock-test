@@ -95,6 +95,17 @@ describe('WatchlistPage', () => {
     expect(await screen.findByText(/your watchlist is empty/i)).toBeInTheDocument()
   })
 
+  it('focuses the add-ticker input when the empty state\'s one-click button is clicked', async () => {
+    vi.spyOn(portfolioApi, 'fetchWatchlistEnriched').mockResolvedValue([])
+
+    renderWithRouter(<WatchlistPage />)
+    await screen.findByText(/your watchlist is empty/i)
+
+    await userEvent.click(screen.getByRole('button', { name: /add your first ticker/i }))
+
+    expect(screen.getByPlaceholderText(/e\.g\. reliance/i)).toHaveFocus()
+  })
+
   it('shows an error with retry when the watchlist fails to load', async () => {
     vi.spyOn(portfolioApi, 'fetchWatchlistEnriched').mockRejectedValueOnce(new ApiError('boom', 'server', 500))
 

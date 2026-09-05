@@ -84,6 +84,16 @@ describe('PortfolioPage', () => {
     expect(screen.queryByText(/allocation/i)).not.toBeInTheDocument()
   })
 
+  it('focuses the add-holding ticker input when the empty state\'s one-click button is clicked', async () => {
+    vi.spyOn(portfolioApi, 'fetchPortfolioSummary').mockResolvedValue(buildSummary({ holdings: [] }))
+    renderWithRouter(<PortfolioPage />)
+    await screen.findByText(/no holdings yet/i)
+
+    await userEvent.click(screen.getByRole('button', { name: /add your first holding/i }))
+
+    expect(screen.getByLabelText(/^ticker$/i)).toHaveFocus()
+  })
+
   it('reloads the summary after adding a holding', async () => {
     const fetchSpy = vi
       .spyOn(portfolioApi, 'fetchPortfolioSummary')

@@ -93,6 +93,13 @@ const router = createBrowserRouter(
             return { Component: EmptyStatesFixturePage }
           },
         },
+        {
+          path: '__dev/skeletons',
+          lazy: async () => {
+            const { SkeletonFixturePage } = await import('./dev/SkeletonFixturePage')
+            return { Component: SkeletonFixturePage }
+          },
+        },
       ]
     : routes,
 )

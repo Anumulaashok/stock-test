@@ -57,3 +57,27 @@ Append-only. Every judgment call that would previously have been a question gets
 **Chosen:** swapped to `--color-accent` (the app's existing blue accent), clearly distinct from both the idle gray and the alarm red, while still reading as calm/non-urgent.
 
 **Why:** no automated test checks color-distance; this is exactly the class of defect G7 (fixture-route eyeballing) exists to catch.
+
+---
+
+## 2026-09-05 — Wave 2: the master brief's DMA50/200 "overlay" assumption was wrong
+
+**Finding:** the brief states "the Screener import already returns DMA50/DMA200/volume alongside price — overlays are a fetch, not a computation." Investigation found this is only half true: Screener's per-day DMA50/DMA200 series is persisted to `daily_price_history` (`app/db/models.py`, `DailyPriceHistoryRow.dma50`/`.dma200`), but that table feeds only `app/forecasting/accuracy_service.py`'s evaluation step — it is never threaded through to `app/models/market.py`'s `HistoricalPricePoint` or `report.forecast.historical_prices`. What IS already on the report is `forecast.moving_averages`: a single current-value SMA50/SMA200 snapshot (built in `app/reporting/service.py`'s `_build_moving_averages`), not a per-day series.
+
+**Ambiguity:** build a moving DMA overlay by computing it client-side from `historical_prices.close` (fast, but a real I2 violation — DMA is exactly the kind of statistical figure reserved for the backend), or ship only what the data model actually supports.
+
+**Chosen:** flat reference lines at the current SMA50/200 value (`currentSmaReferenceLines` in `PriceChartSection.tsx`), reusing the exact technique `ForecastSection.tsx` already uses for the same reason, labeled explicitly "Current N-day SMA" with an on-screen caveat that it is not a moving trace. Logged the real per-day DMA exposure as a `BACKLOG.md` proposal instead.
+
+**Why:** per the ambiguity-resolution rule, the conservative option (show less, compute nothing new client-side) beats a plausible-looking client-computed moving average line that would silently violate I2.
+
+**What would reverse it:** the backend request in `BACKLOG.md` ("per-day DMA50/DMA200 on the report") being implemented — at that point the flat reference lines should be replaced with the real overlay.
+
+---
+
+## 2026-09-05 — Wave 2: regime bands and relative-strength-vs-Nifty deferred, not built
+
+**Finding:** both `regime.py`'s per-row classification and `features.py`'s relative-strength computation are internal to the ML forecast pipeline (`app/forecasting/ml/`) only. Regime reaches the frontend as a single current-value string on `MlForecastResult` (a new fetch relative to what Technical/Overview have today, not on `report.forecast`); relative strength never reaches the frontend as a raw number at all — it's only ever baked into free-text driver strings.
+
+**Chosen:** did not build either "regime bands" (would need a historical per-day regime series that doesn't exist anywhere) or a "relative strength vs Nifty" toggle (no raw numeric field exists to plot). Logged both as `BACKLOG.md` proposals.
+
+**Why:** I1 forbids synthesizing a historical regime-band series from a single current classification, and there is nothing honest to plot for relative strength without new backend exposure — matches the D11 spirit even though this isn't literally D11's blocked item.

@@ -48,6 +48,36 @@ Backend/infra proposals raised instead of building a frontend workaround, per `d
 
 ---
 
+## Per-day DMA50/DMA200 series on the report (Wave 2 price chart)
+
+**Needed:** Screener's per-day DMA50/DMA200 series is already captured in `daily_price_history` (`DailyPriceHistoryRow.dma50`/`.dma200`) but is only consumed by `accuracy_service.py`'s evaluation step, never threaded through to `report.forecast.historical_prices`. Today's price chart can only show a flat "current SMA value" reference line (`forecast.moving_averages`, a single snapshot), not a real moving-average overlay traced across history.
+
+**Proposed shape:** add `dma50: Decimal | None` / `dma200: Decimal | None` to `app/models/market.py`'s `HistoricalPricePoint` (and the corresponding `ReportHistoricalPricePoint` mirror), populated from `daily_price_history` for the same date range already being returned, when available.
+
+**Why not built into the frontend:** computing a 50/200-day moving average from `historical_prices.close` client-side is exactly the statistical computation I2 reserves for the backend — the data already exists in a DB table, it just isn't surfaced.
+
+---
+
+## Historical regime series (Wave 2 "regime bands")
+
+**Needed:** `app/forecasting/ml/regime.py`'s `classify_regime`/`classify_regime_series` classify a row/dataframe into `TRENDING_UP`/`TRENDING_DOWN`/`SIDEWAYS`/etc., but the frontend only ever receives the single *current* regime as a string on `MlForecastResult.regime` (via `fetchMlForecast`) — there is no per-day historical regime series exposed anywhere, which is what "regime bands" (shaded date ranges on the price chart) would need.
+
+**Proposed shape:** an endpoint (or a field added to the ML forecast response) returning `{date, regime}[]` for the ticker's available history, built by running `classify_regime_series` over the same historical feature dataframe the ML pipeline already computes.
+
+**Why not built into the frontend:** there is no honest way to shade historical regime bands from a single current-value string; fabricating a plausible-looking historical band series from one data point would be exactly the kind of synthesized data I1 forbids.
+
+---
+
+## Relative strength vs Nifty as a raw numeric field (Wave 2 "RS toggle")
+
+**Needed:** `app/forecasting/ml/features.py`'s `build_relative_strength_features` computes `relative_strength_14d/30d/90d` against the Nifty 50 benchmark, but this value is only ever consumed internally by the ML pipeline/explanation engine (`explain.py`) to generate driver text — it is never returned as a plottable number in `MlForecastResult` or anywhere else the frontend can read.
+
+**Proposed shape:** expose `relative_strength_30d` (or the full set) as a field on `MlForecastResult`, or a small dedicated endpoint returning the raw series per date for charting as a toggleable line.
+
+**Why not built into the frontend:** there is nothing to plot without this — no raw number reaches the frontend today, only prose mentions inside driver strings.
+
+---
+
 ## Not backlog — resolved
 
 **Alerts backend** (originally Wave 4/5 backend request) is **authorized** under `docs/AUTONOMY.md` D10 (additive tables only, `app/portfolio/service.py` pattern, evaluate-on-read). This is Wave 5 build scope, not a backlog proposal.

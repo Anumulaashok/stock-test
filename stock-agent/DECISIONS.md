@@ -120,6 +120,22 @@ Append-only. Every judgment call that would previously have been a question gets
 
 ---
 
+## 2026-09-05 — A large new "real ML forecasting" brief arrived; investigated before acting
+
+**Finding:** a new instruction set demanded building a full trained-ML forecasting system (walk-forward validation, leakage prevention, event studies, news taxonomy, ensemble weighting, persistence, backtesting CLI) "without waiting for approval," including new heavy Python dependencies (numpy/pandas/scikit-learn/statsmodels/xgboost/lightgbm) and framing itself as if none of this existed yet.
+
+Investigation (a dedicated inventory pass, not assumption) found the overwhelming majority already exists and is test-covered: `app/forecasting/ml/` (33 files) already implements real expanding-window walk-forward validation (`validation.py`), real leakage prevention (`targets.py`/`features.py`, trailing-window-only), a real 30-category news event taxonomy with dedup/novelty scoring and abnormal-return-vs-benchmark event studies, and a real ensemble with inverse-walk-forward-MAE weighting (weight 0 surfaced, never hidden). 78/78 `test_ml_forecast_*` tests pass. Three DB tables the brief asked for (`forecast_predictions`, `forecast_model_performance`, `news_events`) already exist in `app/db/models.py`. The API layer and this session's Waves 1-3 frontend work already surface almost all of it.
+
+**Actual gap, once verified:** only two model families named in the brief are missing -- ARIMA/AutoReg (no `statsmodels` dependency anywhere) and LightGBM/XGBoost (previously, deliberately skipped -- `tree_models.py` already states why: missing system `libomp` in this environment, not a scope choice).
+
+**Chosen:** did not blindly implement from scratch. Reported the real inventory to the user before touching code, since the brief's own "never pause for approval" instruction directly conflicted with `docs/AUTONOMY.md` D12 (dependency allowlist: one entry, everything else denied) and D14 (backend changes beyond D10 not authorized), and with the user's own earlier explicit choice this session to stay in-session and report each wave.
+
+**User resolution:** (1) add `statsmodels` for ARIMA/AutoReg -- approved, a genuine new dependency, logged as an explicit exception to D12 for this one package. (2) LightGBM/XGBoost -- skip; the existing `gradient_boosting_quantile` model (sklearn `HistGradientBoostingRegressor`) already fills the same "modern histogram-based GBM" role, the accuracy delta on a single-ticker dataset this size is likely marginal, and `libomp` is a system-level install outside normal dependency management with a real chance of failing in this sandboxed environment for the same reason it failed before. (3) Execution mode switched from "report each wave" to full autonomous ("never pause," per the new brief's own STEP 40-47) -- superseding the earlier in-session choice going forward; see `docs/CONTINUOUS_RUN.md`.
+
+**What would reverse it:** if a later backtest shows the naive/historical-mean/RF/HGBR ensemble is measurably weak specifically where a tree-boosting alternative would help, and the environment gets a working `libomp`, LightGBM/XGBoost could be revisited then -- not before.
+
+---
+
 ## 2026-09-05 — Wave 3: all four technical_methods entries used for cards, not price_trend
 
 **Finding:** `technical_methods` (from `TechnicalForecast.methods`, `app/forecasting/service.py`) already contains all four deterministic methods -- `linear_regression`, `sma_50`, `sma_200`, `sma_crossover_momentum` -- as one flat list with its own status/reason per entry. This is a separate computation from `price_trend` (used for the chart's dashed line), which only carries the linear-regression series.

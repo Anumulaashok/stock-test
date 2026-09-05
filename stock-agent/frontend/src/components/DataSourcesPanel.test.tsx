@@ -2,6 +2,7 @@ import { render, screen, waitFor } from '@testing-library/react'
 import { describe, expect, it, vi, afterEach } from 'vitest'
 
 import DataSourcesPanel from './DataSourcesPanel'
+import { DataSourceStatusProvider } from '../dataSources/DataSourceStatusContext'
 import type { DataSourceStatus } from '../types/backend'
 
 vi.mock('../api/dataSources', () => ({ fetchDataSourceStatus: vi.fn() }))
@@ -27,6 +28,14 @@ function source(overrides: Partial<DataSourceStatus> = {}): DataSourceStatus {
   }
 }
 
+function renderPanel() {
+  return render(
+    <DataSourceStatusProvider>
+      <DataSourcesPanel />
+    </DataSourceStatusProvider>,
+  )
+}
+
 describe('DataSourcesPanel', () => {
   it('shows each source with its status and role', async () => {
     mocked.mockResolvedValue({
@@ -42,7 +51,7 @@ describe('DataSourcesPanel', () => {
       ],
     })
 
-    render(<DataSourcesPanel />)
+    renderPanel()
 
     expect(await screen.findByText('Screener')).toBeInTheDocument()
     expect(screen.getByText('yfinance')).toBeInTheDocument()
@@ -55,7 +64,7 @@ describe('DataSourcesPanel', () => {
       sources: [source({ status: 'AUTH_EXPIRED', last_success_at: null })],
     })
 
-    render(<DataSourcesPanel />)
+    renderPanel()
 
     expect(await screen.findByText('Expired')).toBeInTheDocument()
     expect(screen.getByText(/Screener unavailable — fallback active/)).toBeInTheDocument()
@@ -66,7 +75,7 @@ describe('DataSourcesPanel', () => {
       sources: [source({ configured: false, status: 'NOT_CONFIGURED', last_success_at: null })],
     })
 
-    render(<DataSourcesPanel />)
+    renderPanel()
 
     expect(await screen.findByText('Not configured')).toBeInTheDocument()
     expect(screen.queryByText('Connected')).not.toBeInTheDocument()
@@ -88,7 +97,7 @@ describe('DataSourcesPanel', () => {
       ],
     })
 
-    render(<DataSourcesPanel />)
+    renderPanel()
 
     expect(await screen.findByText(/Returns HTTP 402/)).toBeInTheDocument()
     expect(screen.getByText(/Market data · Fallback/)).toBeInTheDocument()
@@ -97,11 +106,9 @@ describe('DataSourcesPanel', () => {
   it('reports a failed status fetch instead of rendering a fake healthy state', async () => {
     mocked.mockRejectedValue(new Error('network'))
 
-    render(<DataSourcesPanel />)
+    renderPanel()
 
-    await waitFor(() =>
-      expect(screen.getByText('Source status is unavailable.')).toBeInTheDocument(),
-    )
+    await waitFor(() => expect(screen.getByText('Source status is unavailable.')).toBeInTheDocument())
     expect(screen.queryByText('Connected')).not.toBeInTheDocument()
   })
 })

@@ -1,30 +1,29 @@
 import { useState } from 'react'
 import type {
   ForecastHorizonKey,
-  ReportForecastMetric,
-  ReportForecastSection,
+  MetricStatus,
   ReportHistoricalPricePoint,
   ReportHorizonForecast,
+  ReportMarketSection,
+  ReportForecastSection,
   ReportTechnicalMethod,
-  ReportValuationScenario,
 } from '../types/backend'
-import { humanizeKey } from '../lib/format'
-import { MetricStatusBadge } from './StatusBadge'
-import { ForecastLineChart, type ForecastLineChartMarker, type ForecastLineChartReferenceLine, type ForecastLineChartSeries } from './ForecastLineChart'
-
-const SCENARIO_LABEL: Record<string, string> = {
-  bear: 'Bear',
-  base: 'Base',
-  bull: 'Bull',
-}
-
-const CROSSOVER_LABEL: Record<string, string> = {
-  golden_cross: 'Golden cross (bullish)',
-  death_cross: 'Death cross (bearish)',
-  neutral: 'Neutral',
-}
+import { formatDate, humanizeKey } from '../lib/format'
+import {
+  PriceChart,
+  type ForecastChartPoint,
+  type ForecastLineChartMarker,
+  type PriceChartEdgeMarker,
+} from './PriceChart'
 
 const METHOD_COLORS = ['#2952a3', '#b5540a', '#3a6b35', '#8a6d00', '#7a3ab3']
+
+const METHOD_LABEL: Record<string, string> = {
+  linear_regression: 'Linear Regression',
+  sma_50: '50-day SMA',
+  sma_200: '200-day SMA',
+  sma_crossover_momentum: 'Crossover Momentum',
+}
 
 const HORIZON_TABS: { key: ForecastHorizonKey; label: string }[] = [
   { key: 'daily', label: 'Daily' },
@@ -32,141 +31,135 @@ const HORIZON_TABS: { key: ForecastHorizonKey; label: string }[] = [
   { key: 'monthly', label: 'Monthly' },
 ]
 
-// How many trailing historical closes to sample per horizon, and the
-// stride used to downsample daily closes into weekly/monthly points --
-// this is a purely presentational sampling of already-computed closes
-// (never a new calculated value) so the historical segment lines up on
-// the same period axis as that horizon's forecast points.
-const HORIZON_HISTORY_STEP: Record<ForecastHorizonKey, number> = { daily: 1, weekly: 5, monthly: 21 }
-const HORIZON_HISTORY_MAX_POINTS: Record<ForecastHorizonKey, number> = { daily: 30, weekly: 12, monthly: 12 }
-
 function toNumber(value: string | null): number | null {
   if (value === null) return null
   const n = Number(value)
   return Number.isFinite(n) ? n : null
 }
 
-/** Presentational-only percent change between two already-computed
- * prices (never a new financial metric of its own). */
-function percentChange(from: number | null, to: number | null): number | null {
-  if (from === null || to === null || from === 0) return null
-  return ((to - from) / from) * 100
-}
-
-function formatSignedPercent(value: number | null): string | null {
-  if (value === null) return null
-  const sign = value > 0 ? '+' : ''
-  return `${sign}${value.toFixed(2)}%`
-}
-
-/** Downsamples already-observed closing prices into one point per
- * period, ending at period -1 (the period immediately before the
- * forecast's period 0/"today" anchor). Pure and presentation-only --
- * it never fabricates a value, only picks which already-computed
- * closes to plot. Exported for unit testing. */
-export function sampleHistoricalPrices(
-  historicalPrices: ReportHistoricalPricePoint[],
-  horizon: ForecastHorizonKey,
-): { day: number; value: number }[] {
-  return sampleHistoricalPoints(historicalPrices, horizon).map(({ day, value }) => ({ day, value }))
-}
-
-/** Same sampling as `sampleHistoricalPrices`, but keeps each point's
- * real calendar date alongside it (dropped by the function above to
- * keep its existing tested shape) -- used only to label the chart's
- * x-axis with actual dates instead of relative day offsets. */
-function sampleHistoricalPoints(
-  historicalPrices: ReportHistoricalPricePoint[],
-  horizon: ForecastHorizonKey,
-): { day: number; value: number; date: string | null }[] {
-  const closes = historicalPrices
+/** Every already-observed closing price, chronologically -- the full
+ * history, never sampled or capped, so the chart shows all old data
+ * alongside the prediction. Pure and presentation-only: it never
+ * fabricates a value, only reshapes what the backend already computed.
+ * Exported for unit testing. */
+export function allHistoricalPrices(historicalPrices: ReportHistoricalPricePoint[]): ForecastChartPoint[] {
+  return historicalPrices
     .map((p) => ({ date: p.date, value: toNumber(p.close) }))
-    .filter((p): p is { date: string; value: number } => p.value !== null)
-  if (closes.length === 0) return []
+    .filter((p): p is ForecastChartPoint => p.value !== null)
+    .sort((a, b) => a.date.localeCompare(b.date))
+}
 
-  const step = HORIZON_HISTORY_STEP[horizon]
-  const maxPoints = HORIZON_HISTORY_MAX_POINTS[horizon]
-
-  // Sample every `step`-th close counting backward from the most recent
-  // one (so the most recent close is always included), capped at
-  // `maxPoints`, then restore chronological order.
-  const sampled: { value: number; date: string | null }[] = []
-  for (let i = closes.length - 1; i >= 0 && sampled.length < maxPoints; i -= step) {
-    sampled.push(closes[i])
-  }
-  sampled.reverse()
-
-  return sampled.map((point, index) => ({ day: index - sampled.length, value: point.value, date: point.date }))
+/** The selected horizon's predicted points (already period-appropriate
+ * -- daily/weekly/monthly-spaced, decided by the backend, never by this
+ * component), bridged from "today" so the predicted line visually
+ * connects to where the historical line ends. Exported for testing. */
+export function predictedPrices(
+  data: ReportHorizonForecast,
+  currentPrice: number | null,
+  todayDate: string | null,
+): ForecastChartPoint[] {
+  const trend = data.price_trend
+    .map((point) => (point.date && toNumber(point.projected_price) !== null ? { date: point.date, value: toNumber(point.projected_price) as number } : null))
+    .filter((p): p is ForecastChartPoint => p !== null)
+  // A lone "today" bridge point with no actual future predictions isn't
+  // a forecast line -- only prepend it when there's a real point to
+  // draw a line to.
+  if (trend.length === 0 || currentPrice === null || todayDate === null) return trend
+  return [{ date: todayDate, value: currentPrice }, ...trend]
 }
 
 /** Builds one chart marker per non-trend technical method, positioned
- * at that method's `horizon_period` -- the same unit the price-trend
- * series' `period` field uses -- so a method's marker lines up with
- * the trend line regardless of horizon. Exported for unit testing. */
+ * at that method's own `projected_date` -- exported for unit testing. */
 export function buildMethodMarkers(methods: ReportTechnicalMethod[]): ForecastLineChartMarker[] {
   const otherMethods = methods.filter((m) => m.method !== 'linear_regression' && m.status === 'calculated')
   return otherMethods
     .map((m, i) => {
       const value = toNumber(m.projected_price)
-      return value === null
+      return value === null || !m.projected_date
         ? null
-        : { label: humanizeKey(m.method), day: m.horizon_period, value, color: METHOD_COLORS[(i + 1) % METHOD_COLORS.length] }
+        : { label: humanizeKey(m.method), date: m.projected_date, value, color: METHOD_COLORS[(i + 1) % METHOD_COLORS.length] }
     })
     .filter((m): m is ForecastLineChartMarker => m !== null)
 }
 
-function ForecastMetricCard({ metric }: { metric: ReportForecastMetric }) {
+export interface MethodCardData {
+  method: string
+  label: string
+  description: string
+  targetDate: string | null
+  formattedProjectedPrice: string | null
+  status: MetricStatus
+  reason: string | null
+}
+
+/**
+ * One card per deterministic method (Wave 3, I6): all four --
+ * linear_regression, sma_50, sma_200, sma_crossover_momentum -- shown
+ * side by side, parallel, never averaged into a single number.
+ *
+ * No % change or band is shown here (the master brief's card spec named
+ * both) because neither is on `ReportTechnicalMethod` -- unlike
+ * `ReportValuationMethod`, which already carries
+ * `upside_downside_percent`, the technical-forecast methods have no
+ * equivalent field, and no uncertainty range exists for a deterministic
+ * point estimate at all. Computing either from `projected_price` and
+ * `currentPrice` in TypeScript would be exactly the derived-statistic
+ * violation I2 forbids. See BACKLOG.md, "% change field for deterministic
+ * technical methods" and DECISIONS.md for this finding. Exported for
+ * unit testing.
+ */
+export function buildMethodCards(methods: ReportTechnicalMethod[]): MethodCardData[] {
+  return methods.map((m) => ({
+    method: m.method,
+    label: METHOD_LABEL[m.method] ?? humanizeKey(m.method),
+    description: m.description,
+    targetDate: m.projected_date,
+    formattedProjectedPrice: m.formatted_projected_price,
+    status: m.status,
+    reason: m.reason,
+  }))
+}
+
+function MethodCard({ card }: { card: MethodCardData }) {
   return (
-    <div className="rounded border border-[var(--color-border)] bg-[var(--color-surface)] p-3">
-      <div className="flex items-center justify-between">
-        <span className="text-sm font-medium text-[var(--color-text-muted)]">{humanizeKey(metric.name)}</span>
-        {metric.status !== 'calculated' && <MetricStatusBadge status={metric.status} />}
-      </div>
-      {metric.status === 'calculated' ? (
+    <div className="flex flex-col gap-1 rounded-md border border-[var(--color-border)] bg-[var(--color-surface)] p-3">
+      <span className="text-xs font-semibold text-[var(--color-text-muted)]" title={card.description}>
+        {card.label}
+      </span>
+      {card.status === 'calculated' ? (
         <>
-          <div className="mt-1 text-xs text-[var(--color-text-faint)]">
-            Historical CAGR: <span className="font-mono-nums">{metric.formatted_historical_cagr}</span>
-          </div>
-          <dl className="mt-2 space-y-0.5 border-t border-[var(--color-border)] pt-2 text-xs">
-            {metric.projections.map((year) => (
-              <div key={year.year_offset} className="flex justify-between gap-2">
-                <dt className="text-[var(--color-text-faint)]">Year +{year.year_offset}</dt>
-                <dd className="font-mono-nums">{year.formatted_value ?? 'unavailable'}</dd>
-              </div>
-            ))}
-          </dl>
+          <span className="font-mono-nums text-lg font-semibold">{card.formattedProjectedPrice ?? '—'}</span>
+          <span className="text-[10px] text-[var(--color-text-faint)]">{formatDate(card.targetDate) ?? '—'}</span>
         </>
       ) : (
-        <p className="mt-1 text-xs text-[var(--color-text-faint)]">{metric.reason}</p>
+        <span className="text-xs text-[var(--color-text-faint)]">{card.reason ?? 'Unavailable'}</span>
       )}
     </div>
   )
 }
 
-function ValuationScenarioRow({ scenario }: { scenario: ReportValuationScenario }) {
+/** All four deterministic methods, side by side -- never blended into
+ * one number (I6). Distinct visual unit from the chart above it, which
+ * only overlays the "other methods" toggle's markers when enabled;
+ * this row always shows every method regardless of that toggle. */
+function MethodCardRow({ methods }: { methods: ReportTechnicalMethod[] }) {
+  const cards = buildMethodCards(methods)
+  if (cards.length === 0) return null
   return (
-    <div className="rounded border border-[var(--color-border)] bg-[var(--color-surface)] p-3">
-      <div className="flex items-center justify-between">
-        <span className="text-sm font-medium text-[var(--color-text-muted)]">
-          {SCENARIO_LABEL[scenario.scenario] ?? humanizeKey(scenario.scenario)}
-        </span>
-        {scenario.status !== 'calculated' && <MetricStatusBadge status={scenario.status} />}
-      </div>
-      <div className="mt-1 font-mono-nums text-xl font-semibold">
-        {scenario.formatted_value_per_share ?? (
-          <span className="text-base font-normal text-[var(--color-text-faint)]">Unavailable</span>
-        )}
-      </div>
-      {scenario.fcf_growth_rate !== null && (
-        <div className="text-xs text-[var(--color-text-faint)]">
-          FCF growth assumption: <span className="font-mono-nums">{scenario.fcf_growth_rate}</span>
-        </div>
-      )}
-      {scenario.reason && scenario.status !== 'calculated' && (
-        <p className="mt-1 text-xs text-[var(--color-text-faint)]">{scenario.reason}</p>
-      )}
+    <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+      {cards.map((card) => (
+        <MethodCard key={card.method} card={card} />
+      ))}
     </div>
   )
+}
+
+/** True when the backend's own reason for having nothing to chart
+ * points at a fixable data gap (insufficient stored price history)
+ * rather than a structural unavailability -- used only to decide
+ * whether to add a pointer to the historical-import tool that fixes it. */
+function isFixableWithHistoricalImport(reason: string | null): boolean {
+  return reason !== null && /historical (price|closing price)/i.test(reason)
 }
 
 function HorizonTabs({ active, onSelect }: { active: ForecastHorizonKey; onSelect: (horizon: ForecastHorizonKey) => void }) {
@@ -249,151 +242,7 @@ function IndicatorsMenu({
   )
 }
 
-function ForecastDataDrawer({ points }: { points: ReportHorizonForecast['price_trend'] }) {
-  const [open, setOpen] = useState(false)
-  if (points.length === 0) return null
-  return (
-    <details className="mt-3 border-t border-[var(--color-border)] pt-2" open={open} onToggle={(e) => setOpen((e.target as HTMLDetailsElement).open)}>
-      <summary className="cursor-pointer text-xs font-medium text-[var(--color-accent)] hover:text-[var(--color-accent-strong)]">
-        {open ? 'Hide forecast data' : 'View forecast data'}
-      </summary>
-      <div className="mt-2 overflow-x-auto">
-        <table className="w-full min-w-[240px] text-left text-xs">
-          <thead>
-            <tr className="text-[var(--color-text-faint)]">
-              <th className="py-1 font-medium">Forecast point</th>
-            </tr>
-          </thead>
-          <tbody>
-            {points.map((point) => (
-              <tr key={point.period} className="border-t border-[var(--color-border)]">
-                <td className="py-1 font-mono-nums text-[var(--color-text-muted)]">
-                  {point.date ?? `Period ${point.period}`}: {point.formatted_projected_price ?? 'unavailable'}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-    </details>
-  )
-}
-
-function TrendStatusBanner({ signal }: { signal: ReportHorizonForecast['technical_signal'] }) {
-  if (!signal) return null
-  const dotColor =
-    signal.color === 'green'
-      ? 'var(--color-status-positive)'
-      : signal.color === 'red'
-        ? 'var(--color-status-negative)'
-        : signal.color === 'yellow'
-          ? 'var(--color-status-medium)'
-          : 'var(--color-status-info)'
-  const label = signal.label === 'bullish' ? 'Bullish' : signal.label === 'bearish' ? 'Bearish' : signal.label === 'mixed' ? 'Mixed signals' : signal.label === 'neutral' ? 'Neutral' : 'Unavailable'
-  return (
-    <div className="flex items-start gap-2 rounded-md border border-[var(--color-border)] bg-[var(--color-accent-soft)]/40 px-3 py-2">
-      <span aria-hidden className="mt-1 h-2 w-2 shrink-0 rounded-full" style={{ background: dotColor }} />
-      <p className="text-xs leading-snug text-[var(--color-text-muted)]">
-        <span className="font-semibold uppercase tracking-wide" style={{ color: dotColor }}>
-          {label}
-        </span>{' '}
-        — {signal.reason}
-      </p>
-    </div>
-  )
-}
-
-function TechnicalSignalsStrip({ data }: { data: ReportHorizonForecast }) {
-  const cells: { label: string; value: string; tone: 'up' | 'down' | 'neutral' }[] = []
-
-  data.moving_averages.forEach((ma) => {
-    cells.push({
-      label: `${ma.window}-day SMA`,
-      value: ma.status === 'calculated' ? (ma.formatted_value ?? 'unavailable') : 'unavailable',
-      tone: 'neutral',
-    })
-  })
-
-  if (data.crossover) {
-    const signal = data.crossover.status === 'calculated' ? data.crossover.signal : null
-    cells.push({
-      label: 'Crossover',
-      value: signal ? (CROSSOVER_LABEL[signal] ?? signal) : (data.crossover.reason ?? 'unavailable'),
-      tone: signal === 'golden_cross' ? 'up' : signal === 'death_cross' ? 'down' : 'neutral',
-    })
-  }
-
-  data.technical_methods.forEach((method) => {
-    cells.push({
-      label: humanizeKey(method.method),
-      value: method.status === 'calculated' ? (method.formatted_projected_price ?? 'unavailable') : (method.reason ?? 'unavailable'),
-      tone: 'neutral',
-    })
-  })
-
-  if (cells.length === 0) return null
-
-  const toneClass: Record<(typeof cells)[number]['tone'], string> = {
-    up: 'text-[var(--color-status-positive)]',
-    down: 'text-[var(--color-status-negative)]',
-    neutral: 'text-[var(--color-text)]',
-  }
-
-  return (
-    <div>
-      <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-[var(--color-text-faint)]">Technical Signals</h3>
-      <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
-        {cells.map((cell) => (
-          <div key={cell.label} className="rounded-md border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-2">
-            <div className="text-[10px] uppercase tracking-wide text-[var(--color-text-faint)]">{cell.label}</div>
-            <div className={`mt-0.5 text-sm font-semibold ${toneClass[cell.tone]}`}>{cell.value}</div>
-          </div>
-        ))}
-      </div>
-    </div>
-  )
-}
-
-function ForecastSummaryPanel({
-  data,
-  currentPrice,
-}: {
-  data: ReportHorizonForecast
-  currentPrice: number | null
-}) {
-  const lastPoint = data.price_trend.length > 0 ? data.price_trend[data.price_trend.length - 1] : null
-  const targetValue = lastPoint ? toNumber(lastPoint.projected_price) : null
-  const potential = percentChange(currentPrice, targetValue)
-  const potentialLabel = formatSignedPercent(potential)
-
-  return (
-    <div className="flex flex-col gap-3 rounded-md border border-[var(--color-border)] bg-[var(--color-surface)] p-3">
-      <h3 className="text-xs font-semibold uppercase tracking-wide text-[var(--color-text-faint)]">Forecast Summary</h3>
-      {lastPoint ? (
-        <>
-          <div>
-            <div className="text-[10px] uppercase tracking-wide text-[var(--color-text-faint)]">Expected</div>
-            <div className="font-mono-nums text-2xl font-semibold text-[var(--color-text)]">
-              {lastPoint.formatted_projected_price ?? 'unavailable'}
-            </div>
-          </div>
-          {potentialLabel && (
-            <div>
-              <div className="text-[10px] uppercase tracking-wide text-[var(--color-text-faint)]">Potential</div>
-              <div className={`font-mono-nums text-sm font-semibold ${potential !== null && potential >= 0 ? 'text-[var(--color-status-positive)]' : 'text-[var(--color-status-negative)]'}`}>
-                {potentialLabel}
-              </div>
-            </div>
-          )}
-        </>
-      ) : (
-        <p className="text-xs text-[var(--color-text-faint)]">{data.price_trend_reason ?? 'Forecast unavailable for this horizon.'}</p>
-      )}
-    </div>
-  )
-}
-
-function HorizonForecastPanel({
+function HorizonChart({
   data,
   currentPrice,
   historicalPrices,
@@ -405,28 +254,23 @@ function HorizonForecastPanel({
   const [showSma, setShowSma] = useState(true)
   const [showMethods, setShowMethods] = useState(true)
 
-  const trendPoints = data.price_trend
-    .map((point) => ({ day: point.period, value: toNumber(point.projected_price) }))
-    .filter((p): p is { day: number; value: number } => p.value !== null)
-  const forecastSeriesPoints = currentPrice !== null ? [{ day: 0, value: currentPrice }, ...trendPoints] : trendPoints
-  const historicalPoints = sampleHistoricalPoints(historicalPrices, data.horizon)
-  const historicalSeriesPoints = historicalPoints.map(({ day, value }) => ({ day, value }))
-
-  // Real calendar date for every plotted day, so the chart's x-axis
-  // reads "Sep 4" instead of an abstract "+3" offset -- built from the
-  // same already-computed dates the historical/forecast points carry,
-  // never a new date calculation.
-  const dateLabels: Record<number, string> = {}
-  historicalPoints.forEach((p) => {
-    if (p.date) dateLabels[p.day] = p.date
-  })
-  data.price_trend.forEach((p) => {
-    if (p.date) dateLabels[p.period] = p.date
-  })
+  const historical = allHistoricalPrices(historicalPrices)
+  // The bridge point (today's current price) is plotted on the same
+  // date the historical line ends -- both series having a point there
+  // is what visually connects them into one continuous line, without
+  // guessing what "today" actually is from the forecast's own dates.
+  const lastHistoricalDate = historical.length > 0 ? historical[historical.length - 1].date : null
+  const predicted = predictedPrices(data, currentPrice, lastHistoricalDate)
 
   const methodMarkers = showMethods ? buildMethodMarkers(data.technical_methods) : []
 
-  const referenceLines: ForecastLineChartReferenceLine[] = showSma
+  // Edge markers, not full-width reference lines: a full-width line at
+  // today's SMA value would visually cross the historical price series
+  // at points in history where no crossing actually occurred (the SMA
+  // was elsewhere then) -- the exact anti-pattern named in DECISIONS.md
+  // ("current-value-as-full-width-line"), fixed here per the same
+  // authorization that fixed PriceChartSection's identical case.
+  const edgeMarkers: PriceChartEdgeMarker[] = showSma
     ? data.moving_averages
         .map((ma, i) => {
           const value = toNumber(ma.value)
@@ -434,149 +278,143 @@ function HorizonForecastPanel({
             ? null
             : { label: `${ma.window}-day SMA`, value, color: i === 0 ? '#8a6d00' : '#7a3ab3' }
         })
-        .filter((r): r is ForecastLineChartReferenceLine => r !== null)
+        .filter((r): r is PriceChartEdgeMarker => r !== null)
     : []
 
-  const series: ForecastLineChartSeries[] = []
-  if (historicalSeriesPoints.length > 0) {
-    series.push({ label: 'Historical', color: '#9ca3af', points: historicalSeriesPoints })
-  }
-  if (forecastSeriesPoints.length > 0) {
-    series.push({ label: 'Forecast trend', color: '#2952a3', points: forecastSeriesPoints, dashed: true, area: true })
-  }
-  const hasChart = series.length > 0 || methodMarkers.length > 0
+  const hasChart = historical.length > 0 || predicted.length > 0 || methodMarkers.length > 0
+  // Distinct from `hasChart`: a chart showing only already-observed
+  // historical prices, with no predicted point or marker at all, isn't
+  // actually a forecast -- still worth showing (real data), but paired
+  // with an honest note instead of implying a prediction exists.
+  const hasPrediction = predicted.length > 0 || methodMarkers.length > 0
 
-  const hasPriceTrend = data.price_trend.length > 0
+  const reason = data.price_trend_reason
+  const showHistoricalImportHint = !hasPrediction && isFixableWithHistoricalImport(reason)
 
   return (
-    <div className="flex flex-col gap-4 lg:flex-row">
-      <div className="flex min-w-0 flex-1 flex-col gap-3 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] p-4">
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <div>
-            <span className="text-xs font-semibold uppercase tracking-wide text-[var(--color-text-faint)]">{data.label}</span>
-          </div>
+    <div className="flex flex-col gap-3 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] p-4">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <span className="text-xs font-semibold uppercase tracking-wide text-[var(--color-text-faint)]">{data.label}</span>
+        {hasChart && (
           <div className="flex items-center gap-3">
             <div className="hidden items-center gap-3 text-[10px] text-[var(--color-text-faint)] sm:flex">
-              {historicalSeriesPoints.length > 0 && (
+              {historical.length > 0 && (
                 <span className="flex items-center gap-1">
                   <span className="inline-block h-0.5 w-3 rounded-full" style={{ background: '#9ca3af' }} /> Historical
                 </span>
               )}
-              {forecastSeriesPoints.length > 0 && (
+              {predicted.length > 0 && (
                 <span className="flex items-center gap-1">
-                  <span className="inline-block h-0.5 w-3 rounded-full" style={{ background: '#2952a3' }} /> Forecast trend
+                  <span className="inline-block h-0.5 w-3 rounded-full" style={{ background: '#2952a3' }} /> Predicted
                 </span>
               )}
             </div>
             <IndicatorsMenu showSma={showSma} onShowSmaChange={setShowSma} showMethods={showMethods} onShowMethodsChange={setShowMethods} />
           </div>
-        </div>
-
-        {hasChart ? (
-          <ForecastLineChart series={series} markers={methodMarkers} referenceLines={referenceLines} dateLabels={dateLabels} />
-        ) : (
-          <p className="py-8 text-center text-xs text-[var(--color-text-faint)]">{data.price_trend_reason ?? 'No chartable data for this horizon.'}</p>
-        )}
-
-        <TrendStatusBanner signal={data.technical_signal} />
-
-        {hasPriceTrend && <ForecastDataDrawer points={data.price_trend} />}
-      </div>
-
-      <div className="flex w-full flex-col gap-4 lg:w-72 lg:shrink-0">
-        <ForecastSummaryPanel data={data} currentPrice={currentPrice} />
-        <TechnicalSignalsStrip data={data} />
-      </div>
-    </div>
-  )
-}
-
-export function ForecastSection({ forecast }: { forecast: ReportForecastSection | null }) {
-  const [horizon, setHorizon] = useState<ForecastHorizonKey>('daily')
-
-  if (!forecast || !forecast.available) {
-    return null
-  }
-
-  const hasFinancials = forecast.financial_metrics.length > 0
-  const hasScenarios = forecast.valuation_scenarios.length > 0
-  const activeHorizonForecast = forecast.horizons ? forecast.horizons[horizon] : null
-  const hasHorizonContent = activeHorizonForecast
-    ? activeHorizonForecast.price_trend.length > 0 || activeHorizonForecast.technical_methods.length > 0
-    : false
-
-  if (!hasFinancials && !hasScenarios && !hasHorizonContent) {
-    return null
-  }
-
-  const currentPrice = toNumber(forecast.current_price)
-
-  return (
-    <section aria-labelledby="forecast-heading" className="flex flex-col gap-5">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <h2 id="forecast-heading" className="section-heading">
-            Price Trend &amp; Forecast
-          </h2>
-          <p className="mt-1 text-xs text-[var(--color-text-faint)]">
-            Deterministic extrapolation of historical data — not a recommendation, and never a single asserted price
-            target.
-          </p>
-        </div>
-        {forecast.formatted_current_price && (
-          <div className="text-right">
-            <div className="text-[10px] uppercase tracking-wide text-[var(--color-text-faint)]">Current</div>
-            <div className="font-mono-nums text-2xl font-semibold text-[var(--color-text)]">{forecast.formatted_current_price}</div>
-          </div>
         )}
       </div>
 
-      {hasFinancials && (
-        <div>
-          <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-[var(--color-text-faint)]">
-            Financial Projections{forecast.projection_years ? ` (${forecast.projection_years}-year)` : ''}
-          </h3>
-          <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-            {forecast.financial_metrics.map((metric) => (
-              <ForecastMetricCard key={metric.name} metric={metric} />
-            ))}
-          </div>
-        </div>
-      )}
-
-      {hasScenarios && (
-        <div>
-          <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-[var(--color-text-faint)]">
-            Valuation Scenarios (DCF)
-          </h3>
-          <div className="grid grid-cols-3 gap-3">
-            {forecast.valuation_scenarios.map((scenario) => (
-              <ValuationScenarioRow key={scenario.scenario} scenario={scenario} />
-            ))}
-          </div>
-        </div>
-      )}
-
-      {forecast.horizons && (
-        <div>
-          <div className="mb-3 flex items-center justify-between gap-3">
-            <h3 className="text-xs font-semibold uppercase tracking-wide text-[var(--color-text-faint)]">
-              Price Trend &amp; Technical Forecast
-            </h3>
-            <HorizonTabs active={horizon} onSelect={setHorizon} />
-          </div>
-          <HorizonForecastPanel
-            data={forecast.horizons[horizon]}
-            currentPrice={currentPrice}
-            historicalPrices={forecast.historical_prices}
-          />
-          {(forecast.price_trend_disclaimer || forecast.technical_disclaimer) && (
-            <p className="mt-3 text-xs text-[var(--color-text-faint)]">
-              {forecast.price_trend_disclaimer ?? forecast.technical_disclaimer}
+      {hasChart ? (
+        <PriceChart
+          historical={historical}
+          predicted={predicted}
+          markers={methodMarkers}
+          edgeMarkers={edgeMarkers}
+          ariaLabel="Forecast price chart"
+        />
+      ) : (
+        <div className="flex flex-col items-center gap-1.5 py-10 text-center">
+          <p className="text-xs text-[var(--color-text-faint)]">{reason ?? 'No chartable data for this horizon.'}</p>
+          {showHistoricalImportHint && (
+            <p className="text-xs text-[var(--color-text-faint)]">
+              Import this ticker's price history in{' '}
+              <a href="/settings/system" className="font-medium text-[var(--color-accent-strong)] hover:underline">
+                Settings → System
+              </a>{' '}
+              to unlock this.
             </p>
           )}
         </div>
       )}
+
+      <MethodCardRow methods={data.technical_methods} />
+
+      {hasChart && !hasPrediction && (
+        <p className="text-xs text-[var(--color-text-faint)]">
+          No prediction available for this horizon{reason ? ` — ${reason}` : ''}.
+          {showHistoricalImportHint && (
+            <>
+              {' '}
+              <a href="/settings/system" className="font-medium text-[var(--color-accent-strong)] hover:underline">
+                Import price history
+              </a>{' '}
+              to unlock this.
+            </>
+          )}
+        </p>
+      )}
+    </div>
+  )
+}
+
+export function ForecastSection({
+  forecast,
+  market,
+}: {
+  forecast: ReportForecastSection | null
+  market?: ReportMarketSection | null
+}) {
+  const [horizon, setHorizon] = useState<ForecastHorizonKey>('daily')
+
+  if (!forecast || !forecast.available || !forecast.horizons) {
+    return null
+  }
+
+  const activeHorizonForecast = forecast.horizons[horizon]
+  const hasHorizonContent = activeHorizonForecast.price_trend.length > 0 || activeHorizonForecast.technical_methods.length > 0
+  if (!hasHorizonContent) {
+    return null
+  }
+
+  const effectiveFormattedCurrentPrice = forecast.formatted_current_price ?? market?.formatted_current_price ?? null
+  const currentPrice = toNumber(forecast.current_price) ?? toNumber(market?.current_price ?? null)
+
+  return (
+    <section aria-labelledby="forecast-heading" className="flex flex-col gap-4">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex items-center gap-2">
+          <h2 id="forecast-heading" className="section-heading">
+            Price Trend &amp; Forecast
+          </h2>
+          <span
+            className="rounded-full border border-[var(--color-border)] px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-[var(--color-text-faint)]"
+            title="This deterministic forecast has never been evaluated against what actually happened -- unlike the AI Forecast section, which tracks its own accuracy."
+          >
+            Not backtested
+          </span>
+        </div>
+        {effectiveFormattedCurrentPrice ? (
+          <div className="text-right">
+            <div className="text-[10px] uppercase tracking-wide text-[var(--color-text-faint)]">Current</div>
+            <div className="font-mono-nums text-2xl font-semibold text-[var(--color-text)]">{effectiveFormattedCurrentPrice}</div>
+          </div>
+        ) : (
+          <div className="text-right">
+            <div className="text-[10px] uppercase tracking-wide text-[var(--color-text-faint)]">Current</div>
+            <div className="text-xs text-[var(--color-text-faint)]">Price unavailable</div>
+          </div>
+        )}
+      </div>
+
+      <div className="flex items-center justify-between gap-3">
+        <HorizonTabs active={horizon} onSelect={setHorizon} />
+      </div>
+
+      <HorizonChart data={activeHorizonForecast} currentPrice={currentPrice} historicalPrices={forecast.historical_prices} />
+
+      <p className="text-[11px] text-[var(--color-text-faint)]">
+        {forecast.price_trend_disclaimer ?? forecast.technical_disclaimer ?? 'Deterministic extrapolation of historical data — not a recommendation.'}
+      </p>
     </section>
   )
 }

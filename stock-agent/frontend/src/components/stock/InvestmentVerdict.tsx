@@ -1,5 +1,6 @@
 import type { ReportSummary } from '../../types/backend'
 import { toDisplayNumber } from '../../lib/format'
+import { useCountUp } from '../../hooks/useCountUp'
 import { SignalBadge } from '../SignalBadge'
 
 const BAND_LABEL: Record<string, string> = {
@@ -17,6 +18,7 @@ const BAND_LABEL: Record<string, string> = {
  * deterministic, see SignalBadge) stands in for a one-line "why". */
 export function InvestmentVerdict({ summary }: { summary: ReportSummary }) {
   const score = toDisplayNumber(summary.overall_score, 0)
+  const animatedScore = useCountUp(score !== null ? Number(score) : null)
   const bandLabel = summary.score_band ? BAND_LABEL[summary.score_band] : null
 
   return (
@@ -25,7 +27,7 @@ export function InvestmentVerdict({ summary }: { summary: ReportSummary }) {
         Investment View
       </h2>
       {score !== null ? (
-        <div className="mt-3 font-mono-nums text-5xl font-extrabold tracking-tight">{score}<span className="text-2xl text-[var(--color-text-faint)]">/100</span></div>
+        <div className="mt-3 font-mono-nums text-5xl font-extrabold tracking-tight">{animatedScore}<span className="text-2xl text-[var(--color-text-faint)]">/100</span></div>
       ) : (
         <div className="mt-3 text-lg text-[var(--color-text-faint)]">Score unavailable</div>
       )}

@@ -1,9 +1,13 @@
 import { useState, type FormEvent } from 'react'
+import { useLocation, useNavigate } from 'react-router-dom'
 import { useAuth } from '../auth/AuthContext'
 import { ApiError } from '../api/client'
+import { paths } from '../routes/paths'
 
-export function LoginPage({ onSuccess, onNavigateToSignup }: { onSuccess: () => void; onNavigateToSignup: () => void }) {
+export function LoginPage() {
   const { login } = useAuth()
+  const navigate = useNavigate()
+  const location = useLocation()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState<string | null>(null)
@@ -15,7 +19,8 @@ export function LoginPage({ onSuccess, onNavigateToSignup }: { onSuccess: () => 
     setSubmitting(true)
     try {
       await login(email, password)
-      onSuccess()
+      const from = (location.state as { from?: Location } | null)?.from
+      navigate(from ? `${from.pathname}${from.search}` : paths.home(), { replace: true })
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Something went wrong. Please try again.')
     } finally {
@@ -87,7 +92,7 @@ export function LoginPage({ onSuccess, onNavigateToSignup }: { onSuccess: () => 
         No account?{' '}
         <button
           type="button"
-          onClick={onNavigateToSignup}
+          onClick={() => navigate(paths.signup())}
           className="font-medium text-[var(--color-accent)] underline-offset-2 hover:underline"
         >
           Sign up

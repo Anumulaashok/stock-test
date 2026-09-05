@@ -5,8 +5,15 @@ which always computes fresh and never persists anything --
 `POST /api/v1/research/ticker` is the snapshot-aware entry point:
 normal calls reuse today's already-completed research for the ticker
 (no provider or LLM calls), `force_refresh` always computes and saves a
-new one, and nothing is ever overwritten. The GET routes below only
-ever replay what was already saved -- they never trigger computation.
+new one, and nothing is ever overwritten. The GET routes below never
+trigger a recomputation of financial analysis/valuation/scoring/
+forecast/LLM narrative -- they only ever replay what was already saved
+for those. `GET /{ticker}` (the "open this stock" read) is the one
+exception that does still make a live call: it overlays a fresh quote
+on top of the saved report the same way a same-day `POST /ticker` reuse
+does (see `app.snapshot.service.overlay_fresh_quote`), because a saved
+snapshot's price can otherwise sit frozen at whatever it was when the
+report was originally computed, hours or days stale.
 """
 
 import json
@@ -14,24 +21,34 @@ import logging
 from datetime import date, datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.dependencies import build_research_snapshot_service
+from app.api.dependencies import build_data_source_manager, build_research_snapshot_service
 from app.core.config import Settings, get_settings
 from app.data.factory import get_financial_data_provider
 from app.db.base import get_db
-from app.db.models import ForecastSnapshotRow, ResearchReportSnapshotRow, ResearchRunRow
+from app.db.models import (
+    ForecastSnapshotRow,
+    ResearchAnalysisSnapshotRow,
+    ResearchReportSnapshotRow,
+    ResearchRunRow,
+)
 from app.models.research_run import (
     ForecastHorizonKey,
     ForecastSnapshotEntry,
+    RecentResearchEntry,
+    ResearchProgress,
     ResearchRunRequest,
     ResearchRunResult,
     ResearchRunStatus,
     ResearchRunSummary,
     ResearchRunType,
+    ResearchStage,
 )
 from app.pipeline.models import CombinedAnalysisResult, PipelineCompanyInfo, PipelineStatus
+from app.snapshot import progress as progress_module
+from app.snapshot.service import overlay_fresh_quote
 from app.snapshot.exceptions import ResearchInProgressError
 
 logger = logging.getLogger(__name__)
@@ -75,11 +92,87 @@ async def run_research(
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
 
 
+@router.get("/recent")
+async def get_recent_research(
+    limit: int = Query(20, ge=1, le=100),
+    offset: int = Query(0, ge=0),
+    db: AsyncSession = Depends(get_db),
+) -> list[RecentResearchEntry]:
+    """The latest COMPLETED/PARTIAL run for each ticker ever researched,
+    newest first -- global across all tickers, not scoped to any single
+    request's watchlist. Backs the Intelligence home page and the
+    `/research` history page without the N+1 "fetch the watchlist, then
+    one request per ticker" pattern those pages previously would have
+    needed. Declared before `GET /{ticker}` so `/recent` is never matched
+    as a ticker.
+    """
+    ranked = (
+        select(
+            ResearchRunRow.id,
+            ResearchRunRow.ticker,
+            ResearchRunRow.research_date,
+            ResearchRunRow.run_type,
+            ResearchRunRow.status,
+            ResearchRunRow.completed_at,
+            func.row_number()
+            .over(partition_by=ResearchRunRow.ticker, order_by=ResearchRunRow.completed_at.desc())
+            .label("rn"),
+        )
+        .where(ResearchRunRow.status.in_([ResearchRunStatus.COMPLETED.value, ResearchRunStatus.PARTIAL.value]))
+        .subquery()
+    )
+    stmt = (
+        select(ranked, ResearchAnalysisSnapshotRow.scoring_json)
+        .where(ranked.c.rn == 1)
+        .outerjoin(ResearchAnalysisSnapshotRow, ResearchAnalysisSnapshotRow.research_run_id == ranked.c.id)
+        .order_by(ranked.c.completed_at.desc())
+        .limit(limit)
+        .offset(offset)
+    )
+    rows = (await db.execute(stmt)).all()
+
+    entries = []
+    for row in rows:
+        company_name: str | None = None
+        overall_score: str | None = None
+        band: str | None = None
+        if row.scoring_json:
+            try:
+                scoring = json.loads(row.scoring_json)
+                company_name = scoring.get("company_name")
+                overall_score = scoring.get("overall_score")
+                band = scoring.get("band")
+            except (json.JSONDecodeError, AttributeError):
+                logger.warning("recent_research_scoring_json_unparseable ticker=%s run_id=%s", row.ticker, row.id)
+        entries.append(
+            RecentResearchEntry(
+                ticker=row.ticker,
+                company_name=company_name,
+                research_run_id=row.id,
+                research_date=row.research_date,
+                status=ResearchRunStatus(row.status),
+                run_type=ResearchRunType(row.run_type),
+                overall_score=overall_score,
+                band=band,
+                completed_at=row.completed_at,
+            )
+        )
+    return entries
+
+
 @router.get("/{ticker}")
-async def get_latest_research(ticker: str, db: AsyncSession = Depends(get_db)) -> ResearchRunResult:
-    """Pure read: the latest COMPLETED/PARTIAL snapshot for `ticker`
-    (any date), never triggers computation. 404 if none exists yet --
-    call `POST /ticker` first."""
+async def get_latest_research(
+    ticker: str,
+    settings: Settings = Depends(get_settings),
+    db: AsyncSession = Depends(get_db),
+) -> ResearchRunResult:
+    """The latest COMPLETED/PARTIAL snapshot for `ticker` (any date) --
+    never recomputes financial analysis/valuation/scoring/forecast/LLM
+    narrative, but does overlay a live quote on top (see module
+    docstring), so opening a stock always shows a current price rather
+    than whatever was frozen into the report at whatever time it was
+    originally computed. 404 if nothing has ever been researched for
+    this ticker -- call `POST /ticker` first."""
     ticker = _normalize(ticker)
     stmt = (
         select(ResearchRunRow)
@@ -93,7 +186,40 @@ async def get_latest_research(ticker: str, db: AsyncSession = Depends(get_db)) -
     run_row = (await db.execute(stmt)).scalar_one_or_none()
     if run_row is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"No research found for {ticker} yet.")
-    return await _load_run_result(db, run_row)
+    result = await _load_run_result(db, run_row)
+    # `DataSourceManager` (not the plain single-provider
+    # `CachedMarketDataService`) -- it resolves the ticker's
+    # provider-specific symbol (e.g. yfinance needs "TCS.NS", not
+    # "TCS") and falls back across the whole configured chain, exactly
+    # like every other quote fetch in this app.
+    manager = build_data_source_manager(settings, db)
+    return await overlay_fresh_quote(manager, result, ticker)
+
+
+@router.get("/{ticker}/progress")
+async def get_research_progress(ticker: str) -> ResearchProgress:
+    """Real, best-effort stage-by-stage status for an in-flight (or
+    just-finished) `POST /ticker` call for this ticker -- see
+    `app.snapshot.progress`. Meant to be polled by a client that already
+    has a `POST /ticker` request in flight for the same ticker; never
+    triggers or blocks on anything itself. 404 when nothing is known
+    (never started in this process, or the process restarted since) --
+    the frontend falls back to a plain indeterminate loading state in
+    that case, not an error.
+    """
+    ticker = _normalize(ticker)
+    run_progress = progress_module.get(ticker)
+    if run_progress is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"No research progress known for {ticker}.")
+    return ResearchProgress(
+        ticker=run_progress.ticker,
+        research_run_id=run_progress.research_run_id,
+        finished=run_progress.finished,
+        stages=[
+            ResearchStage(key=s.key, label=s.label, status=s.status.value, detail=s.detail)
+            for s in run_progress.stages
+        ],
+    )
 
 
 @router.get("/{ticker}/history")

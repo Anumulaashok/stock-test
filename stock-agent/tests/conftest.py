@@ -9,6 +9,21 @@ from app.core.config import Settings
 from app.db import models  # noqa: F401 -- registers table metadata on Base
 from app.db.base import Base, get_db
 from app.main import app
+from app.sources.registry import get_shared_health_store
+
+
+@pytest.fixture(autouse=True)
+def _reset_shared_source_health():
+    """`get_shared_health_store` is a process-lifetime `lru_cache`
+    singleton by design (see its docstring) so a provider's observed
+    health survives across requests in production. In a single pytest
+    process that same persistence would leak one test's simulated
+    provider health into the next -- clear it before and after every
+    test so each starts from the same NOT_CONFIGURED/SUCCESS baseline
+    `SourceRegistry.__init__` would give a fresh store."""
+    get_shared_health_store.cache_clear()
+    yield
+    get_shared_health_store.cache_clear()
 
 
 @pytest.fixture

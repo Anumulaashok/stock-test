@@ -103,6 +103,19 @@ class Settings(BaseSettings):
     research_default_max_results: int = Field(default=5)
     research_stale_after_days: int = Field(default=14)
 
+    # Twice-daily auto-refresh (market open / close, IST) — recomputes
+    # every ticker that has ever been successfully researched. See
+    # app/scheduler/research_refresh.py. Off by default in tests via
+    # this flag (never in production unless explicitly disabled) so a
+    # test run never accidentally schedules a live job.
+    research_auto_refresh_enabled: bool = Field(default=True)
+    # Bounds how many tickers refresh concurrently -- each refresh is a
+    # full research run (provider calls + up to a ~2 minute LLM call),
+    # so unbounded concurrency across potentially many tickers would
+    # both hammer the configured providers and spike memory/DB
+    # connections at once.
+    research_auto_refresh_max_concurrency: int = Field(default=2)
+
     # Market data provider SELECTION only — mirrors financial_data_provider's
     # policy. "fmp"/"indianapi" reuse the same connection settings above
     # (same vendor/account) but this is a fully separate abstraction
@@ -145,10 +158,21 @@ class Settings(BaseSettings):
 
     def market_provider_chain(self) -> list[str]:
         singular = self.market_data_provider.strip().lower()
-        # "fmp" is the code default rather than a deliberate choice, and FMP
-        # cannot serve NSE/BSE symbols — fall back to yfinance-first so an
-        # unconfigured deploy doesn't select the one provider that can't work.
-        default = "yfinance,fmp" if singular == "fmp" else singular
+        # Without an explicit MARKET_DATA_PROVIDERS chain, don't leave a
+        # single configured provider as a single point of failure for a
+        # live quote -- automatically fall back through the other
+        # capable providers (deduped, singular first) rather than
+        # letting a transient yfinance outage mean no price at all when
+        # e.g. IndianAPI is configured and healthy. "fmp" is the code
+        # default rather than a deliberate choice, and it cannot serve
+        # NSE/BSE symbols at all — kept out of the front of an
+        # unconfigured chain so a bare deploy doesn't select the one
+        # provider that can't work, and always last as a genuine
+        # last-resort otherwise.
+        if singular == "fmp":
+            default = "yfinance,indianapi,fmp"
+        else:
+            default = ",".join(dict.fromkeys([singular, "yfinance", "indianapi", "fmp"]))
         return self._chain(self.market_data_providers, default)
 
     def historical_price_chain(self) -> list[str]:
@@ -209,7 +233,12 @@ class Settings(BaseSettings):
     # ticker, short enough that a fixed provider issue (or a fallback
     # data source recovering) is reflected again quickly.
     financial_data_negative_cache_ttl_seconds: int = Field(default=120)  # 2 minutes
-    market_data_cache_ttl_seconds: int = Field(default=30)  # seconds
+    # Lowered from 30s -- yfinance itself has no published per-key quota
+    # (no API key at all), but Yahoo's endpoints do throttle/block an IP
+    # that hammers them, so this stays a real cache, not zero, just tight
+    # enough that "open a stock" and "switch tabs a few seconds later"
+    # both read a genuinely current quote instead of a half-minute-old one.
+    market_data_cache_ttl_seconds: int = Field(default=10)  # seconds
 
 
 @lru_cache

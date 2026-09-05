@@ -13,12 +13,19 @@ portfolio total then reflects only the holdings that *do* have a price,
 with a warning explaining why, rather than silently understating value.
 """
 
+import json
 from decimal import ROUND_HALF_UP, Decimal
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.db.models import HoldingRow, PortfolioRow, WatchlistItemRow
+from app.db.models import (
+    HoldingRow,
+    PortfolioRow,
+    ResearchAnalysisSnapshotRow,
+    ResearchRunRow,
+    WatchlistItemRow,
+)
 from app.market.service import MarketDataService
 from app.models.portfolio import (
     Holding,
@@ -27,6 +34,7 @@ from app.models.portfolio import (
     HoldingWithMarketData,
     PortfolioSummary,
     WatchlistItem,
+    WatchlistItemEnriched,
 )
 
 _CENTS = Decimal("0.01")
@@ -226,6 +234,65 @@ class PortfolioService:
         await db.commit()
         await db.refresh(row)
         return WatchlistItem(ticker=row.ticker, created_at=row.created_at.isoformat())
+
+    async def list_watchlist_enriched(self, db: AsyncSession, user_id: str) -> list[WatchlistItemEnriched]:
+        """`list_watchlist` plus a live quote (same cached
+        `MarketDataService.get_quote` path `get_summary` uses for
+        holdings) and the latest research score (from the run's analysis
+        snapshot, not the full report -- same cheap lookup
+        `GET /api/v1/research/recent` uses). Independent per-ticker
+        lookups, not a bulk endpoint on either side -- there isn't one --
+        but each is the single cached/indexed call that side already has,
+        never a duplicate of what `get_summary`/`get_recent_research`
+        already do."""
+        items = await self.list_watchlist(db, user_id)
+        enriched: list[WatchlistItemEnriched] = []
+        for item in items:
+            price, price_status, change_percent = await self._current_quote(item.ticker)
+            score = await self._latest_score(db, item.ticker)
+            enriched.append(
+                WatchlistItemEnriched(
+                    ticker=item.ticker,
+                    created_at=item.created_at,
+                    current_price=price,
+                    price_status=price_status,
+                    change_percent=change_percent,
+                    overall_score=score[0] if score else None,
+                    band=score[1] if score else None,
+                    last_researched_at=score[2] if score else None,
+                )
+            )
+        return enriched
+
+    async def _current_quote(self, ticker: str) -> tuple[Decimal | None, str, Decimal | None]:
+        if self._market_data_service is None:
+            return None, "unavailable", None
+        result = await self._market_data_service.get_quote(ticker)
+        if result.status == "success" and result.snapshot and result.snapshot.quote:
+            quote = result.snapshot.quote
+            return quote.current_price, quote.freshness.value, quote.change_percent
+        return None, "unavailable", None
+
+    async def _latest_score(self, db: AsyncSession, ticker: str) -> tuple[Decimal | None, str | None, str | None] | None:
+        stmt = (
+            select(ResearchRunRow.completed_at, ResearchAnalysisSnapshotRow.scoring_json)
+            .join(ResearchAnalysisSnapshotRow, ResearchAnalysisSnapshotRow.research_run_id == ResearchRunRow.id)
+            .where(
+                ResearchRunRow.ticker == ticker,
+                ResearchRunRow.status.in_(["COMPLETED", "PARTIAL"]),
+            )
+            .order_by(ResearchRunRow.completed_at.desc())
+            .limit(1)
+        )
+        row = (await db.execute(stmt)).first()
+        if row is None or not row.scoring_json:
+            return None
+        try:
+            scoring = json.loads(row.scoring_json)
+        except json.JSONDecodeError:
+            return None
+        completed_at = row.completed_at.isoformat() if row.completed_at else None
+        return scoring.get("overall_score"), scoring.get("band"), completed_at
 
     async def remove_from_watchlist(self, db: AsyncSession, user_id: str, ticker: str) -> None:
         ticker = ticker.strip().upper()

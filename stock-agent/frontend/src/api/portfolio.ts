@@ -1,5 +1,5 @@
 import { deleteRequest, getJson, patchJson, postJson } from './client'
-import type { Holding, PortfolioSummary, WatchlistItem } from '../types/backend'
+import type { Holding, PortfolioSummary, WatchlistItem, WatchlistItemEnriched } from '../types/backend'
 
 export async function fetchHoldings(): Promise<Holding[]> {
   return getJson<Holding[]>('/api/v1/portfolio')
@@ -30,6 +30,14 @@ export async function deleteHolding(holdingId: string): Promise<void> {
 
 export async function fetchWatchlist(): Promise<WatchlistItem[]> {
   return getJson<WatchlistItem[]>('/api/v1/watchlist')
+}
+
+/** `fetchWatchlist` plus a live quote and the latest research score per
+ * ticker -- for the Watchlist page's table. Prefer plain `fetchWatchlist`
+ * when only ticker membership/count is needed (e.g. Home's summary
+ * card), since this does real per-ticker work on the backend. */
+export async function fetchWatchlistEnriched(): Promise<WatchlistItemEnriched[]> {
+  return getJson<WatchlistItemEnriched[]>('/api/v1/watchlist/enriched')
 }
 
 export async function addWatchlistItem(ticker: string): Promise<WatchlistItem> {

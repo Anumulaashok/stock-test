@@ -29,6 +29,7 @@ from app.sources.registry import (
     SCREENER,
     YFINANCE,
     SourceRegistry,
+    get_shared_health_store,
 )
 from app.forecasting.service import ForecastingService
 from app.llm.factory import get_llm_provider
@@ -142,6 +143,12 @@ def _configured_sources(settings: Settings, *, screener_cookie: str | None) -> d
 
 
 def build_source_registry(settings: Settings, *, screener_cookie: str | None = None) -> SourceRegistry:
+    """Built fresh per call (so `configured` always reflects the current
+    settings/cookie), but every call shares the same process-lifetime
+    `health_store` -- see `get_shared_health_store` -- so observed health
+    (`last_success_at`/`last_error_at`) accumulates across requests
+    instead of resetting every time, which previously left the status
+    endpoint's health always empty regardless of real traffic."""
     return SourceRegistry(
         chains={
             Category.FINANCIALS: settings.financial_provider_chain(),
@@ -150,6 +157,7 @@ def build_source_registry(settings: Settings, *, screener_cookie: str | None = N
             Category.COMPANY_SEARCH: settings.company_search_chain(),
         },
         configured=_configured_sources(settings, screener_cookie=screener_cookie),
+        health_store=get_shared_health_store(),
     )
 
 

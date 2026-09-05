@@ -54,5 +54,20 @@ class WatchlistItem(BaseModel):
     created_at: str
 
 
+class WatchlistItemEnriched(WatchlistItem):
+    """`WatchlistItem` plus a live quote and the latest research score,
+    for the Watchlist page's "should I look at this" table. Both halves
+    are independently optional -- a ticker can be watchlisted without
+    ever having been researched, and a quote can be unavailable while a
+    score is not. Never a fabricated 0; missing data is `None`."""
+
+    current_price: Decimal | None = None
+    price_status: str = "unavailable"  # a `PriceFreshness` value, or "unavailable"
+    change_percent: Decimal | None = None
+    overall_score: Decimal | None = None
+    band: str | None = None
+    last_researched_at: str | None = None
+
+
 class WatchlistCreateRequest(BaseModel):
     ticker: str = Field(min_length=1)

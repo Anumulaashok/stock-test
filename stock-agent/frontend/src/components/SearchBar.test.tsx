@@ -13,7 +13,7 @@ describe('SearchBar', () => {
   })
 
   it('submits the typed value directly when the user presses Analyze', async () => {
-    vi.spyOn(searchApi, 'searchStocks').mockResolvedValue([])
+    vi.spyOn(searchApi, 'searchStocksWithScreenerFallback').mockResolvedValue([])
     const onSubmit = vi.fn()
     render(<SearchBar onSubmit={onSubmit} disabled={false} />)
 
@@ -24,7 +24,7 @@ describe('SearchBar', () => {
   })
 
   it('shows suggestions from the search API and submits the selected one', async () => {
-    vi.spyOn(searchApi, 'searchStocks').mockResolvedValue([RELIANCE])
+    vi.spyOn(searchApi, 'searchStocksWithScreenerFallback').mockResolvedValue([RELIANCE])
     const onSubmit = vi.fn()
     render(<SearchBar onSubmit={onSubmit} disabled={false} />)
 
@@ -38,7 +38,7 @@ describe('SearchBar', () => {
   })
 
   it('does not query the search API for an empty or whitespace-only value', async () => {
-    const spy = vi.spyOn(searchApi, 'searchStocks').mockResolvedValue([])
+    const spy = vi.spyOn(searchApi, 'searchStocksWithScreenerFallback').mockResolvedValue([])
     render(<SearchBar onSubmit={vi.fn()} disabled={false} />)
 
     await userEvent.type(screen.getByLabelText(/ticker symbol/i), '   ')
@@ -50,7 +50,7 @@ describe('SearchBar', () => {
   })
 
   it('selects a highlighted suggestion with the keyboard', async () => {
-    vi.spyOn(searchApi, 'searchStocks').mockResolvedValue([RELIANCE])
+    vi.spyOn(searchApi, 'searchStocksWithScreenerFallback').mockResolvedValue([RELIANCE])
     const onSubmit = vi.fn()
     render(<SearchBar onSubmit={onSubmit} disabled={false} />)
 
@@ -64,7 +64,7 @@ describe('SearchBar', () => {
   })
 
   it('disables the input and button when disabled is true', () => {
-    vi.spyOn(searchApi, 'searchStocks').mockResolvedValue([])
+    vi.spyOn(searchApi, 'searchStocksWithScreenerFallback').mockResolvedValue([])
     render(<SearchBar onSubmit={vi.fn()} disabled={true} />)
 
     expect(screen.getByLabelText(/ticker symbol/i)).toBeDisabled()

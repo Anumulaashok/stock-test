@@ -1,4 +1,4 @@
-import type { ReportSignal, ReportTechnicalSignal, SignalColor } from '../types/backend'
+import type { ReportMovingAverageCrossover, ReportSignal, ReportTechnicalSignal, SignalColor } from '../types/backend'
 
 /**
  * Single primitive for every deterministic, color-coded "signal" badge
@@ -69,4 +69,31 @@ const TECHNICAL_SIGNAL_LABEL: Record<ReportTechnicalSignal['label'], string> = {
 
 export function TechnicalSignalBadge({ signal }: { signal: ReportTechnicalSignal | null }) {
   return <SignalBadgeBase signal={signal} labelMap={TECHNICAL_SIGNAL_LABEL} align="start" />
+}
+
+const CROSSOVER_COLOR: Record<string, SignalColor> = {
+  golden_cross: 'green',
+  death_cross: 'red',
+  neutral: 'gray',
+}
+
+const CROSSOVER_LABEL: Record<string, string> = {
+  golden_cross: 'Golden Cross',
+  death_cross: 'Death Cross',
+  neutral: 'Neutral',
+  unavailable: 'Unavailable',
+}
+
+/** Reads `crossover.signal` directly -- never recomputed from the two
+ * moving-average values client-side (I2). `golden_cross`/`death_cross`
+ * are the backend's own vocabulary (app/forecasting/calculations.py),
+ * not a buy/sell call. */
+export function CrossoverBadge({ crossover }: { crossover: ReportMovingAverageCrossover | null }) {
+  if (!crossover || !crossover.signal) return null
+  const generic = {
+    label: crossover.signal,
+    color: CROSSOVER_COLOR[crossover.signal] ?? 'gray',
+    reason: crossover.reason ?? `${crossover.short_window}/${crossover.long_window}-day moving average crossover.`,
+  }
+  return <SignalBadgeBase signal={generic} labelMap={CROSSOVER_LABEL} align="start" />
 }

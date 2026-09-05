@@ -117,3 +117,10 @@ export async function putJson<TResponse>(
 export async function deleteJson<TResponse>(path: string, timeoutMs: number = DEFAULT_TIMEOUT_MS): Promise<TResponse> {
   return request<TResponse>('DELETE', path, undefined, timeoutMs)
 }
+
+/** Normalizes any thrown value into an `ApiError` -- replaces the
+ * `error instanceof ApiError ? error : new ApiError(...)` block
+ * duplicated across every page's catch handler. */
+export function toApiError(error: unknown): ApiError {
+  return error instanceof ApiError ? error : new ApiError('Unexpected error.', 'network')
+}

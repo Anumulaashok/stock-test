@@ -11,6 +11,11 @@ asyncpg>=0.29
 bcrypt>=4.1
 pyjwt>=2.9
 yfinance>=1.7
+apscheduler>=3.11,<4
+numpy>=1.26
+pandas>=2.2
+scikit-learn>=1.5
+statsmodels>=0.14
 
 pytest>=8.3
 pytest-asyncio>=0.24

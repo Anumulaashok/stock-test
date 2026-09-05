@@ -1,58 +1,23 @@
-import { useCallback, useEffect, useState } from 'react'
-
-import { fetchDataSourceStatus } from '../api/dataSources'
+import { useDataSourceStatus } from '../dataSources/DataSourceStatusContext'
+import { roleLabel, STATUS_LABEL, toneFor, type Tone } from '../lib/dataSourceStatus'
 import type { DataSourceStatus } from '../types/backend'
 
 /**
  * Makes the source strategy visible: which source owns each category,
  * whether it is working, and when a fallback is carrying the load.
  *
- * Every value comes from GET /api/v1/market/data-sources/status -- there is
- * no placeholder or optimistic state here. A source whose status is unknown
- * says so rather than showing green.
+ * Every value comes from GET /api/v1/market/data-sources/status, fetched
+ * once for the whole app by `DataSourceStatusProvider` (mounted in
+ * `AppShell`, shared with the sidebar health badge) -- this panel never
+ * fires its own request. There is no placeholder or optimistic state: a
+ * source whose status is unknown says so rather than showing green.
  */
-
-type Tone = 'ok' | 'warn' | 'bad' | 'idle'
-
-const STATUS_TONE: Record<string, Tone> = {
-  SUCCESS: 'ok',
-  UNKNOWN: 'idle',
-  NOT_CONFIGURED: 'idle',
-  RATE_LIMITED: 'warn',
-  UNREACHABLE: 'warn',
-  AUTH_EXPIRED: 'bad',
-  INVALID: 'bad',
-  ERROR: 'bad',
-}
-
-const STATUS_LABEL: Record<string, string> = {
-  SUCCESS: 'Connected',
-  UNKNOWN: 'Not checked',
-  NOT_CONFIGURED: 'Not configured',
-  RATE_LIMITED: 'Rate limited',
-  UNREACHABLE: 'Unreachable',
-  AUTH_EXPIRED: 'Expired',
-  INVALID: 'Invalid response',
-  ERROR: 'Error',
-}
-
-const CATEGORY_LABEL: Record<string, string> = {
-  financials: 'Financials',
-  market_quote: 'Market data',
-  historical_price: 'Historical',
-  company_search: 'Search',
-}
 
 const TONE_STYLE: Record<Tone, { dot: string; text: string }> = {
   ok: { dot: 'var(--color-status-positive)', text: 'var(--color-status-positive)' },
   warn: { dot: 'var(--color-status-medium)', text: 'var(--color-status-medium)' },
   bad: { dot: 'var(--color-status-critical)', text: 'var(--color-status-critical)' },
   idle: { dot: 'var(--color-text-faint)', text: 'var(--color-text-faint)' },
-}
-
-function toneFor(source: DataSourceStatus): Tone {
-  if (!source.configured) return 'idle'
-  return STATUS_TONE[source.status] ?? 'idle'
 }
 
 function relativeTime(iso: string | null): string | null {
@@ -64,15 +29,6 @@ function relativeTime(iso: string | null): string | null {
   if (seconds < 3600) return `${Math.floor(seconds / 60)} min ago`
   if (seconds < 86_400) return `${Math.floor(seconds / 3600)} hr ago`
   return `${Math.floor(seconds / 86_400)} d ago`
-}
-
-function roleLabel(source: DataSourceStatus): string | null {
-  const primary = source.primary_for.map((c) => CATEGORY_LABEL[c] ?? c)
-  const fallback = source.fallback_for.map((c) => CATEGORY_LABEL[c] ?? c)
-  const parts: string[] = []
-  if (primary.length) parts.push(`${primary.join(', ')} · Primary`)
-  if (fallback.length) parts.push(`${fallback.join(', ')} · Fallback`)
-  return parts.length ? parts.join('  ') : null
 }
 
 function SourceRow({ source }: { source: DataSourceStatus }) {
@@ -120,31 +76,10 @@ function SourceRow({ source }: { source: DataSourceStatus }) {
 }
 
 export default function DataSourcesPanel() {
-  const [sources, setSources] = useState<DataSourceStatus[] | null>(null)
-  const [error, setError] = useState<string | null>(null)
-  const [loading, setLoading] = useState(true)
+  const { phase, sources, reload } = useDataSourceStatus()
+  const loading = phase === 'loading'
 
-  const load = useCallback(() => {
-    setLoading(true)
-    fetchDataSourceStatus()
-      .then((response) => {
-        setSources(response.sources)
-        setError(null)
-      })
-      .catch(() => {
-        setSources(null)
-        setError('Source status is unavailable.')
-      })
-      .finally(() => setLoading(false))
-  }, [])
-
-  useEffect(() => {
-    load()
-  }, [load])
-
-  const degraded = (sources ?? []).filter(
-    (s) => s.configured && toneFor(s) !== 'ok' && toneFor(s) !== 'idle',
-  )
+  const degraded = (sources ?? []).filter((s) => s.configured && toneFor(s) !== 'ok' && toneFor(s) !== 'idle')
 
   return (
     <section className="surface-card animate-fade-in-up overflow-hidden" aria-label="Data sources">
@@ -157,7 +92,7 @@ export default function DataSourcesPanel() {
         </p>
         <button
           type="button"
-          onClick={load}
+          onClick={reload}
           disabled={loading}
           className="text-[0.6875rem] font-semibold disabled:opacity-50"
           style={{ color: 'var(--color-accent-strong)' }}
@@ -178,9 +113,9 @@ export default function DataSourcesPanel() {
         </p>
       ) : null}
 
-      {error ? (
+      {phase === 'error' ? (
         <p className="px-4 py-3 text-[0.75rem]" style={{ color: 'var(--color-text-muted)' }}>
-          {error}
+          Source status is unavailable.
         </p>
       ) : loading && sources === null ? (
         <p className="px-4 py-3 text-[0.75rem]" style={{ color: 'var(--color-text-faint)' }}>

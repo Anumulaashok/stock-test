@@ -429,6 +429,43 @@ export interface CombinedAnalysisResult {
 export type ResearchRunStatusKey = 'PENDING' | 'RUNNING' | 'COMPLETED' | 'FAILED' | 'PARTIAL'
 export type ResearchRunTypeKey = 'NORMAL' | 'FORCE_REFRESH'
 
+/** One row of `GET /api/v1/research/recent` -- the latest saved run for
+ * one ticker, across every ticker ever researched (global, not scoped to
+ * any watchlist -- research has no `user_id`). `company_name`/
+ * `overall_score`/`band` come from the run's analysis snapshot, not the
+ * full report, and are `null` only if that snapshot itself is missing. */
+export interface RecentResearchEntry {
+  ticker: string
+  company_name: string | null
+  research_run_id: string
+  research_date: string
+  status: ResearchRunStatusKey
+  run_type: ResearchRunTypeKey
+  overall_score: string | null
+  band: string | null
+  completed_at: string | null
+}
+
+export type ResearchStageStatusKey = 'pending' | 'running' | 'success' | 'failed' | 'skipped'
+
+export interface ResearchStage {
+  key: string
+  label: string
+  status: ResearchStageStatusKey
+  detail: string | null
+}
+
+/** Real, best-effort progress for an in-flight (or just-finished)
+ * research run -- see `app/snapshot/progress.py`. Polled from
+ * `GET /api/v1/research/{ticker}/progress` while a `POST /ticker` call
+ * is in flight for the same ticker. */
+export interface ResearchProgress {
+  ticker: string
+  research_run_id: string | null
+  finished: boolean
+  stages: ResearchStage[]
+}
+
 /** One row of research history -- enough to render a history list
  * without loading the full saved report. */
 export interface ResearchRunSummary {
@@ -573,6 +610,19 @@ export interface PortfolioSummary {
 export interface WatchlistItem {
   ticker: string
   created_at: string
+}
+
+/** `WatchlistItem` plus a live quote and the latest research score --
+ * from `GET /api/v1/watchlist/enriched`. Both halves are independently
+ * optional: a ticker can be watchlisted without ever having been
+ * researched, and a quote can be unavailable while a score is not. */
+export interface WatchlistItemEnriched extends WatchlistItem {
+  current_price: string | null
+  price_status: PriceStatus
+  change_percent: string | null
+  overall_score: string | null
+  band: string | null
+  last_researched_at: string | null
 }
 
 // --- Historical price store / Screener import (app/api/market.py) -------------------

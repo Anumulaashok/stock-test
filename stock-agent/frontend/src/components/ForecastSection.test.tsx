@@ -1,7 +1,12 @@
-import { render, screen, fireEvent } from '@testing-library/react'
+import { render as rtlRender, screen, fireEvent } from '@testing-library/react'
+import type { ReactElement } from 'react'
+import { ThemeProvider } from '../theme/ThemeContext'
+
+function render(ui: ReactElement) {
+  return rtlRender(ui, { wrapper: ThemeProvider })
+}
 import { describe, it, expect } from 'vitest'
-import { ForecastSection, sampleHistoricalPrices, buildMethodMarkers } from './ForecastSection'
-import { buildReport } from '../test/fixtures'
+import { ForecastSection, allHistoricalPrices, buildMethodCards, buildMethodMarkers, predictedPrices } from './ForecastSection'
 import type {
   ReportForecastSection,
   ReportHistoricalPricePoint,
@@ -45,22 +50,8 @@ function forecastFixture(overrides: Partial<ReportForecastSection> = {}): Report
     source: 'forecast',
     available: true,
     projection_years: 2,
-    financial_metrics: [
-      {
-        name: 'revenue', unit: 'USD', base_period: 'FY2025', base_value: '121',
-        historical_cagr_percent: '10', status: 'calculated', reason: null,
-        formatted_historical_cagr: '10.00%',
-        projections: [
-          { year_offset: 1, value: '133.1', status: 'calculated', formatted_value: '$133.10' },
-          { year_offset: 2, value: '146.41', status: 'calculated', formatted_value: '$146.41' },
-        ],
-      },
-    ],
-    valuation_scenarios: [
-      { scenario: 'bear', fcf_growth_rate: '0.05', value_per_share: '90', status: 'calculated', reason: null, formatted_value_per_share: '$90.00' },
-      { scenario: 'base', fcf_growth_rate: '0.07', value_per_share: '110', status: 'calculated', reason: null, formatted_value_per_share: '$110.00' },
-      { scenario: 'bull', fcf_growth_rate: '0.09', value_per_share: '135', status: 'calculated', reason: null, formatted_value_per_share: '$135.00' },
-    ],
+    financial_metrics: [],
+    valuation_scenarios: [],
     price_trend: [{ period: 1, day_offset: 1, date: '2026-08-28', projected_price: '101', formatted_projected_price: '$101.00' }],
     price_trend_status: 'calculated',
     price_trend_reason: null,
@@ -129,22 +120,48 @@ function forecastFixture(overrides: Partial<ReportForecastSection> = {}): Report
 }
 
 describe('ForecastSection', () => {
-  it('renders financial projections, valuation scenarios, and the price trend disclaimer', () => {
+  it('shows the current price and the disclaimer, and nothing else text-heavy', () => {
     render(<ForecastSection forecast={forecastFixture()} />)
-    expect(screen.getByText('$146.41')).toBeInTheDocument()
-    expect(screen.getByText('Bear')).toBeInTheDocument()
-    expect(screen.getByText('$135.00')).toBeInTheDocument()
+    expect(screen.getByText('$100.00')).toBeInTheDocument()
     expect(screen.getByText(/not a prediction of future performance/i)).toBeInTheDocument()
   })
 
   it('never labels the forecast a recommendation or a target price', () => {
     render(<ForecastSection forecast={forecastFixture()} />)
-    expect(screen.getByText(/not a recommendation/i)).toBeInTheDocument()
     expect(screen.queryByText(/^target price$/i)).not.toBeInTheDocument()
   })
 
+  it('does not render financial projections or DCF valuation scenarios -- chart only', () => {
+    render(<ForecastSection forecast={forecastFixture()} />)
+    expect(screen.queryByText('Financial Projections')).not.toBeInTheDocument()
+    expect(screen.queryByText('Valuation Scenarios (DCF)')).not.toBeInTheDocument()
+    expect(screen.queryByText('Bear')).not.toBeInTheDocument()
+  })
+
+  it('does not render a numeric "Expected"/"Predicted" summary panel or a technical-signals grid', () => {
+    render(<ForecastSection forecast={forecastFixture()} />)
+    expect(screen.queryByText('Forecast Summary')).not.toBeInTheDocument()
+    expect(screen.queryByText('Technical Signals')).not.toBeInTheDocument()
+  })
+
+  it('renders the chart as an svg image', () => {
+    render(<ForecastSection forecast={forecastFixture()} />)
+    expect(screen.getByRole('img', { name: /forecast price chart/i })).toBeInTheDocument()
+  })
+
+  it('always shows a "Not backtested" badge, regardless of horizon', () => {
+    render(<ForecastSection forecast={forecastFixture()} />)
+    expect(screen.getByText('Not backtested')).toBeInTheDocument()
+  })
+
+  it('shows a method card (including linear_regression) alongside the chart, parallel and never averaged', () => {
+    render(<ForecastSection forecast={forecastFixture()} />)
+    expect(screen.getByText('50-day SMA')).toBeInTheDocument()
+    expect(screen.getByText('$105.00')).toBeInTheDocument()
+  })
+
   it('renders nothing when the forecast is unavailable', () => {
-    const { container } = render(<ForecastSection forecast={buildReport().forecast} />)
+    const { container } = render(<ForecastSection forecast={forecastFixture({ available: false })} />)
     expect(container).toBeEmptyDOMElement()
   })
 
@@ -158,135 +175,245 @@ describe('ForecastSection', () => {
     const tabs = screen.getAllByRole('tab')
     expect(tabs.map((t) => t.textContent)).toEqual(['Daily', 'Weekly', 'Monthly'])
     expect(screen.getByRole('tab', { name: 'Daily' })).toHaveAttribute('aria-selected', 'true')
-    expect(screen.getByText('30 Trading Days')).toBeInTheDocument()
-    expect(screen.getByText('2026-08-28: $101.00')).toBeInTheDocument()
   })
 
-  it('switches to the weekly horizon and shows its own period points and label', () => {
+  it('switches to the weekly horizon and shows its own label', () => {
     render(<ForecastSection forecast={forecastFixture()} />)
     fireEvent.click(screen.getByRole('tab', { name: 'Weekly' }))
-
-    expect(screen.getByRole('tab', { name: 'Weekly' })).toHaveAttribute('aria-selected', 'true')
     expect(screen.getByText('12 Weeks')).toBeInTheDocument()
-    expect(screen.getByText('2026-09-01: $108.00')).toBeInTheDocument()
-    expect(screen.getByText('2026-11-16: $150.00')).toBeInTheDocument()
-    // the daily horizon's point must no longer be shown
-    expect(screen.queryByText('2026-08-28: $101.00')).not.toBeInTheDocument()
   })
 
-  it('switches to the monthly horizon and keeps DCF scenarios shown separately from the trend chart', () => {
-    render(<ForecastSection forecast={forecastFixture()} />)
-    fireEvent.click(screen.getByRole('tab', { name: 'Monthly' }))
-
-    expect(screen.getByText('12 Months')).toBeInTheDocument()
-    expect(screen.getByText('2027-08-27: $210.00')).toBeInTheDocument()
-    // DCF scenarios are rendered once, outside the horizon panel, and
-    // stay visible regardless of which horizon tab is active.
-    expect(screen.getByText('Valuation Scenarios (DCF)')).toBeInTheDocument()
-    expect(screen.getByText('$135.00')).toBeInTheDocument()
-  })
-
-  it('shows an unavailable method with its reason instead of hiding it', () => {
-    render(<ForecastSection forecast={forecastFixture()} />)
-    fireEvent.click(screen.getByRole('tab', { name: 'Monthly' }))
-
-    expect(screen.getByText('Sma 200')).toBeInTheDocument()
-    expect(screen.getByText(/at least 200 historical closing prices are required/i)).toBeInTheDocument()
-  })
-
-  it('renders a Historical legend entry distinct from the Forecast trend when history is available', () => {
+  it('renders a Historical legend entry distinct from Predicted when history is available', () => {
     render(<ForecastSection forecast={forecastFixture()} />)
     expect(screen.getByText('Historical')).toBeInTheDocument()
-    expect(screen.getByText('Forecast trend')).toBeInTheDocument()
+    expect(screen.getByText('Predicted')).toBeInTheDocument()
   })
 
   it('omits the Historical legend entry when no historical prices are available', () => {
     render(<ForecastSection forecast={forecastFixture({ historical_prices: [] })} />)
     expect(screen.queryByText('Historical')).not.toBeInTheDocument()
-    expect(screen.getByText('Forecast trend')).toBeInTheDocument()
+    expect(screen.getByText('Predicted')).toBeInTheDocument()
   })
 
-  it('renders nothing horizon-specific when the report has no horizons (legacy contract)', () => {
-    render(<ForecastSection forecast={forecastFixture({ horizons: null })} />)
-    expect(screen.queryByRole('tab')).not.toBeInTheDocument()
-    // financial projections and DCF scenarios are horizon-independent and still render
-    expect(screen.getByText('Valuation Scenarios (DCF)')).toBeInTheDocument()
+  it('renders nothing when the report has no horizons (legacy contract)', () => {
+    const { container } = render(<ForecastSection forecast={forecastFixture({ horizons: null })} />)
+    expect(container).toBeEmptyDOMElement()
+  })
+
+  describe('current price', () => {
+    it('falls back to the market snapshot price when the forecast pipeline has none', () => {
+      render(
+        <ForecastSection
+          forecast={forecastFixture({ current_price: null, formatted_current_price: null })}
+          market={{
+            source: 'yfinance', current_price: '250', previous_close: '245', change: '5', change_percent: '2.04',
+            currency: 'INR', market_status: 'open', market_timestamp: null, freshness: 'delayed',
+            market_cap: null, year_high: null, year_low: null, formatted_current_price: '₹250.00',
+          }}
+        />,
+      )
+      expect(screen.getByText('₹250.00')).toBeInTheDocument()
+    })
+
+    it('shows "Price unavailable" honestly when neither source has one', () => {
+      render(<ForecastSection forecast={forecastFixture({ current_price: null, formatted_current_price: null })} market={null} />)
+      expect(screen.getByText('Price unavailable')).toBeInTheDocument()
+    })
+  })
+
+  describe('chart markers when the deterministic trend is unavailable', () => {
+    function unavailableTrendFixture(technicalMethods: ReportTechnicalMethod[]) {
+      return forecastFixture({
+        horizons: {
+          daily: horizonFixture({
+            price_trend: [],
+            price_trend_status: 'unavailable',
+            price_trend_reason: 'at least 5 historical price points are required',
+            technical_methods: technicalMethods,
+          }),
+          weekly: horizonFixture({ price_trend: [] }),
+          monthly: horizonFixture({ price_trend: [] }),
+        },
+      })
+    }
+
+    it('still renders a chart (as marker points) when a technical method has a calculated value', () => {
+      const forecast = unavailableTrendFixture([
+        {
+          method: 'sma_crossover_momentum', description: 'Momentum drift.', projected_price: '112',
+          projection_days: 5, horizon: 'daily', horizon_period: 5, projected_date: '2026-09-05',
+          status: 'calculated', reason: null, formatted_projected_price: '$112.00',
+        },
+      ])
+      render(<ForecastSection forecast={forecast} />)
+      expect(screen.getByRole('img', { name: /forecast price chart/i })).toBeInTheDocument()
+    })
+
+    it('shows an honest empty state, plus a historical-import hint, when nothing is chartable at all', () => {
+      const forecast = {
+        ...unavailableTrendFixture([
+          {
+            method: 'sma_50', description: '50-day SMA', projected_price: null, projection_days: 5,
+            horizon: 'daily', horizon_period: 5, projected_date: null,
+            status: 'unavailable', reason: 'at least 50 historical closing prices are required (found 0)',
+            formatted_projected_price: null,
+          },
+        ]),
+        historical_prices: [],
+      }
+      render(<ForecastSection forecast={forecast} />)
+
+      expect(screen.queryByRole('img', { name: /forecast price chart/i })).not.toBeInTheDocument()
+      expect(screen.getByText('at least 5 historical price points are required')).toBeInTheDocument()
+      expect(screen.getByRole('link', { name: /settings.*system/i })).toHaveAttribute('href', '/settings/system')
+    })
+
+    it('shows historical prices with an honest "no prediction" note when only history is chartable', () => {
+      const forecast = unavailableTrendFixture([
+        {
+          method: 'sma_50', description: '50-day SMA', projected_price: null, projection_days: 5,
+          horizon: 'daily', horizon_period: 5, projected_date: null,
+          status: 'unavailable', reason: 'at least 50 historical closing prices are required (found 0)',
+          formatted_projected_price: null,
+        },
+      ])
+      render(<ForecastSection forecast={forecast} />)
+
+      expect(screen.getByRole('img', { name: /forecast price chart/i })).toBeInTheDocument()
+      expect(screen.getByText(/no prediction available for this horizon/i)).toBeInTheDocument()
+    })
+
+    it('does not show the historical-import hint for a reason unrelated to missing price history', () => {
+      const forecast = forecastFixture({
+        horizons: {
+          daily: horizonFixture({
+            price_trend: [], price_trend_status: 'unavailable',
+            price_trend_reason: 'current price is unavailable', technical_methods: [],
+          }),
+          weekly: horizonFixture({ price_trend: [] }),
+          monthly: horizonFixture({ price_trend: [] }),
+        },
+      })
+      render(<ForecastSection forecast={forecast} />)
+
+      expect(screen.queryByRole('link', { name: /settings.*system/i })).not.toBeInTheDocument()
+    })
   })
 })
 
-describe('sampleHistoricalPrices', () => {
+describe('allHistoricalPrices', () => {
   it('returns an empty array when there is no usable close', () => {
-    expect(sampleHistoricalPrices([], 'daily')).toEqual([])
-    expect(sampleHistoricalPrices([{ date: '2026-01-01', close: null, formatted_close: null }], 'daily')).toEqual([])
+    expect(allHistoricalPrices([])).toEqual([])
+    expect(allHistoricalPrices([{ date: '2026-08-25', close: null, formatted_close: null }])).toEqual([])
   })
 
-  it('daily takes every trailing close, ending at day -1', () => {
-    const prices: ReportHistoricalPricePoint[] = [
-      { date: '2026-01-01', close: '10', formatted_close: null },
-      { date: '2026-01-02', close: '11', formatted_close: null },
-      { date: '2026-01-03', close: '12', formatted_close: null },
-    ]
-    expect(sampleHistoricalPrices(prices, 'daily')).toEqual([
-      { day: -3, value: 10 },
-      { day: -2, value: 11 },
-      { day: -1, value: 12 },
+  it('returns every usable close, chronologically -- never sampled or capped', () => {
+    expect(allHistoricalPrices(HISTORICAL_PRICES)).toEqual([
+      { date: '2026-08-25', value: 98 },
+      { date: '2026-08-26', value: 99 },
+      { date: '2026-08-27', value: 100 },
     ])
   })
 
-  it('weekly samples every 5th close counting backward, most recent always included', () => {
-    const prices: ReportHistoricalPricePoint[] = Array.from({ length: 11 }, (_, i) => ({
-      date: `2026-01-${String(i + 1).padStart(2, '0')}`,
+  it('does not cap out at any fixed count, however much history exists', () => {
+    const prices: ReportHistoricalPricePoint[] = Array.from({ length: 500 }, (_, i) => ({
+      date: `2024-01-${String((i % 28) + 1).padStart(2, '0')}`,
       close: String(i),
       formatted_close: null,
     }))
-    // indices 10, 5, 0 sampled backward -> chronological [0, 5, 10]
-    expect(sampleHistoricalPrices(prices, 'weekly')).toEqual([
-      { day: -3, value: 0 },
-      { day: -2, value: 5 },
-      { day: -1, value: 10 },
+    expect(allHistoricalPrices(prices).length).toBe(500)
+  })
+})
+
+describe('predictedPrices', () => {
+  it('returns nothing when there is no calculated trend', () => {
+    const data = horizonFixture({ price_trend: [] })
+    expect(predictedPrices(data, 100, '2026-08-27')).toEqual([])
+  })
+
+  it('bridges from the given anchor date/price into the trend', () => {
+    const data = horizonFixture({
+      price_trend: [{ period: 1, day_offset: 1, date: '2026-08-28', projected_price: '101', formatted_projected_price: '$101.00' }],
+    })
+    expect(predictedPrices(data, 100, '2026-08-27')).toEqual([
+      { date: '2026-08-27', value: 100 },
+      { date: '2026-08-28', value: 101 },
     ])
   })
 
-  it('caps the point count at the horizon maximum (12 for monthly)', () => {
-    const prices: ReportHistoricalPricePoint[] = Array.from({ length: 300 }, (_, i) => ({
-      date: `day-${i}`,
-      close: String(i),
-      formatted_close: null,
-    }))
-    const sampled = sampleHistoricalPrices(prices, 'monthly')
-    expect(sampled).toHaveLength(12)
-    expect(sampled[sampled.length - 1].value).toBe(299)
-    expect(sampled[sampled.length - 1].day).toBe(-1)
+  it('skips the bridge point when there is no current price or anchor date', () => {
+    const data = horizonFixture({
+      price_trend: [{ period: 1, day_offset: 1, date: '2026-08-28', projected_price: '101', formatted_projected_price: '$101.00' }],
+    })
+    expect(predictedPrices(data, null, '2026-08-27')).toEqual([{ date: '2026-08-28', value: 101 }])
+    expect(predictedPrices(data, 100, null)).toEqual([{ date: '2026-08-28', value: 101 }])
   })
 })
 
 describe('buildMethodMarkers', () => {
-  it('positions each marker at the method horizon_period, not projection_days', () => {
+  it('positions each marker at the method own projected_date', () => {
     const methods: ReportTechnicalMethod[] = [
       {
-        method: 'rate_of_change_momentum', description: '', projected_price: '120', projection_days: 60,
-        horizon: 'weekly', horizon_period: 12, projected_date: '2026-11-16',
-        status: 'calculated', reason: null, formatted_projected_price: '$120.00',
+        method: 'sma_crossover_momentum', description: '', projected_price: '112', projection_days: 60,
+        horizon: 'weekly', horizon_period: 12, projected_date: '2026-11-16', status: 'calculated', reason: null,
+        formatted_projected_price: '$112.00',
       },
     ]
     const markers = buildMethodMarkers(methods)
-    expect(markers).toHaveLength(1)
-    expect(markers[0].day).toBe(12)
+    expect(markers).toEqual([{ label: 'Sma Crossover Momentum', date: '2026-11-16', value: 112, color: '#b5540a' }])
   })
 
-  it('excludes linear_regression (already the trend line) and non-calculated methods', () => {
+  it('excludes linear_regression (already the trend line), non-calculated methods, and a missing date', () => {
     const methods: ReportTechnicalMethod[] = [
       {
-        method: 'linear_regression', description: '', projected_price: '120', projection_days: 30,
-        horizon: 'daily', horizon_period: 30, projected_date: '2026-09-27',
-        status: 'calculated', reason: null, formatted_projected_price: '$120.00',
+        method: 'linear_regression', description: '', projected_price: '100', projection_days: 5,
+        horizon: 'daily', horizon_period: 5, projected_date: '2026-09-05', status: 'calculated', reason: null,
+        formatted_projected_price: '$100.00',
       },
       {
-        method: 'sma_crossover_momentum', description: '', projected_price: null, projection_days: 30,
-        horizon: 'daily', horizon_period: 30, projected_date: null,
-        status: 'unavailable', reason: 'unavailable', formatted_projected_price: null,
+        method: 'sma_50', description: '', projected_price: null, projection_days: 5,
+        horizon: 'daily', horizon_period: 5, projected_date: null, status: 'unavailable', reason: 'n/a',
+        formatted_projected_price: null,
+      },
+      {
+        method: 'rate_of_change_momentum', description: '', projected_price: '110', projection_days: 5,
+        horizon: 'daily', horizon_period: 5, projected_date: null, status: 'calculated', reason: null,
+        formatted_projected_price: '$110.00',
       },
     ]
     expect(buildMethodMarkers(methods)).toEqual([])
+  })
+})
+
+describe('buildMethodCards', () => {
+  it('includes linear_regression (unlike buildMethodMarkers) with a humanized label, one card per method', () => {
+    const methods: ReportTechnicalMethod[] = [
+      { method: 'linear_regression', description: 'OLS trend.', projected_price: '100', projection_days: 5, horizon: 'daily', horizon_period: 5, projected_date: '2026-09-05', status: 'calculated', reason: null, formatted_projected_price: '$100.00' },
+      { method: 'sma_50', description: '50-day SMA.', projected_price: '95', projection_days: 5, horizon: 'daily', horizon_period: 5, projected_date: '2026-09-05', status: 'calculated', reason: null, formatted_projected_price: '$95.00' },
+      { method: 'sma_200', description: '200-day SMA.', projected_price: '90', projection_days: 5, horizon: 'daily', horizon_period: 5, projected_date: '2026-09-05', status: 'calculated', reason: null, formatted_projected_price: '$90.00' },
+      { method: 'sma_crossover_momentum', description: 'Momentum drift.', projected_price: '102', projection_days: 5, horizon: 'daily', horizon_period: 5, projected_date: '2026-09-05', status: 'calculated', reason: null, formatted_projected_price: '$102.00' },
+    ]
+    expect(buildMethodCards(methods)).toEqual([
+      { method: 'linear_regression', label: 'Linear Regression', description: 'OLS trend.', targetDate: '2026-09-05', formattedProjectedPrice: '$100.00', status: 'calculated', reason: null },
+      { method: 'sma_50', label: '50-day SMA', description: '50-day SMA.', targetDate: '2026-09-05', formattedProjectedPrice: '$95.00', status: 'calculated', reason: null },
+      { method: 'sma_200', label: '200-day SMA', description: '200-day SMA.', targetDate: '2026-09-05', formattedProjectedPrice: '$90.00', status: 'calculated', reason: null },
+      { method: 'sma_crossover_momentum', label: 'Crossover Momentum', description: 'Momentum drift.', targetDate: '2026-09-05', formattedProjectedPrice: '$102.00', status: 'calculated', reason: null },
+    ])
+  })
+
+  it('falls back to a humanized method name for an unrecognized method', () => {
+    const methods: ReportTechnicalMethod[] = [
+      { method: 'rate_of_change_momentum', description: '', projected_price: '100', projection_days: 5, horizon: 'daily', horizon_period: 5, projected_date: '2026-09-05', status: 'calculated', reason: null, formatted_projected_price: '$100.00' },
+    ]
+    expect(buildMethodCards(methods)[0].label).toBe('Rate Of Change Momentum')
+  })
+
+  it('carries the unavailable status and reason through, rather than a fabricated value', () => {
+    const methods: ReportTechnicalMethod[] = [
+      { method: 'sma_50', description: '', projected_price: null, projection_days: 5, horizon: 'daily', horizon_period: 5, projected_date: null, status: 'unavailable', reason: 'insufficient history', formatted_projected_price: null },
+    ]
+    expect(buildMethodCards(methods)).toEqual([
+      { method: 'sma_50', label: '50-day SMA', description: '', targetDate: null, formattedProjectedPrice: null, status: 'unavailable', reason: 'insufficient history' },
+    ])
   })
 })

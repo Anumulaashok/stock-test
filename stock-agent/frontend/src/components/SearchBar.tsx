@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from 'react'
-import { searchStocks, type StockSearchResult } from '../api/search'
+import { searchStocksWithScreenerFallback, type StockSearchResult } from '../api/search'
 
 interface SearchBarProps {
   onSubmit: (ticker: string) => void
@@ -26,7 +26,7 @@ export function SearchBar({ onSubmit, disabled }: SearchBarProps) {
     }
     const thisRequestId = ++requestIdRef.current
     debounceRef.current = setTimeout(() => {
-      searchStocks(query)
+      searchStocksWithScreenerFallback(query)
         .then((results) => {
           if (thisRequestId !== requestIdRef.current) return // a newer keystroke superseded this request
           setSuggestions(results)

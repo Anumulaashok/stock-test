@@ -1,5 +1,5 @@
 import { ApiError, getJson, postJson } from './client'
-import type { ResearchRunResult, ResearchRunSummary } from '../types/backend'
+import type { RecentResearchEntry, ResearchProgress, ResearchRunResult, ResearchRunSummary } from '../types/backend'
 
 /**
  * Runs (or reuses) today's research snapshot for `ticker`. Normal calls
@@ -35,6 +35,18 @@ export async function fetchLatestResearch(ticker: string): Promise<ResearchRunRe
   }
 }
 
+/**
+ * The latest saved run for every ticker ever researched, newest first --
+ * global, not scoped to any watchlist (research has no `user_id`). Backs
+ * Intelligence home's "Recent Research" and the `/research` history
+ * page; replaces the "fetch the watchlist, then one request per ticker"
+ * fan-out those pages previously would have needed.
+ */
+export async function fetchRecentResearch(limit = 20, offset = 0): Promise<RecentResearchEntry[]> {
+  const params = new URLSearchParams({ limit: String(limit), offset: String(offset) })
+  return getJson<RecentResearchEntry[]>(`/api/v1/research/recent?${params}`)
+}
+
 export async function fetchResearchHistory(ticker: string, limit = 20): Promise<ResearchRunSummary[]> {
   const params = new URLSearchParams({ limit: String(limit) })
   return getJson<ResearchRunSummary[]>(
@@ -47,4 +59,24 @@ export async function fetchResearchRun(ticker: string, researchRunId: string): P
   return getJson<ResearchRunResult>(
     `/api/v1/research/${encodeURIComponent(ticker.trim().toUpperCase())}/history/${encodeURIComponent(researchRunId)}`,
   )
+}
+
+/**
+ * Real, best-effort stage-by-stage status for an in-flight (or
+ * just-finished) `runResearch()` call for this ticker -- meant to be
+ * polled while that call's promise is still pending. Returns `null` on
+ * a 404 (nothing known yet -- the backend process never started a run
+ * for this ticker, or restarted since), so callers fall back to a plain
+ * indeterminate loading state rather than treating it as an error.
+ */
+export async function fetchResearchProgress(ticker: string): Promise<ResearchProgress | null> {
+  try {
+    return await getJson<ResearchProgress>(
+      `/api/v1/research/${encodeURIComponent(ticker.trim().toUpperCase())}/progress`,
+      5_000,
+    )
+  } catch (err) {
+    if (err instanceof ApiError && err.status === 404) return null
+    throw err
+  }
 }

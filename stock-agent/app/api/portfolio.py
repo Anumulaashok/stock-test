@@ -23,6 +23,7 @@ from app.models.portfolio import (
     PortfolioSummary,
     WatchlistCreateRequest,
     WatchlistItem,
+    WatchlistItemEnriched,
 )
 from app.portfolio.service import PortfolioError, PortfolioService
 
@@ -117,6 +118,20 @@ async def get_watchlist(
     service: PortfolioService = Depends(get_portfolio_service),
 ) -> list[WatchlistItem]:
     return await service.list_watchlist(db, current_user.id)
+
+
+@router.get("/watchlist/enriched")
+async def get_watchlist_enriched(
+    current_user: UserRow = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+    service: PortfolioService = Depends(get_portfolio_service),
+) -> list[WatchlistItemEnriched]:
+    """`GET /watchlist` plus a live quote and the latest research score
+    per ticker -- the real gap flagged for the Watchlist page and
+    Intelligence's "what changed" concept. Declared before `POST
+    /watchlist` only for readability; no path-matching ambiguity with
+    `GET /watchlist` (exact) or `DELETE /watchlist/{ticker}`."""
+    return await service.list_watchlist_enriched(db, current_user.id)
 
 
 @router.post("/watchlist", status_code=status.HTTP_201_CREATED)

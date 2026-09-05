@@ -51,6 +51,13 @@ const router = createBrowserRouter(
             return { Component: SignalCardFixturePage }
           },
         },
+        {
+          path: '__dev/forecast-section',
+          lazy: async () => {
+            const { ForecastSectionFixturePage } = await import('./dev/ForecastSectionFixturePage')
+            return { Component: ForecastSectionFixturePage }
+          },
+        },
       ]
     : routes,
 )

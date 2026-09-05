@@ -1,13 +1,14 @@
 import { useState } from 'react'
 import type {
   ForecastHorizonKey,
+  MetricStatus,
   ReportHistoricalPricePoint,
   ReportHorizonForecast,
   ReportMarketSection,
   ReportForecastSection,
   ReportTechnicalMethod,
 } from '../types/backend'
-import { humanizeKey } from '../lib/format'
+import { formatDate, humanizeKey } from '../lib/format'
 import {
   PriceChart,
   type ForecastChartPoint,
@@ -16,6 +17,13 @@ import {
 } from './PriceChart'
 
 const METHOD_COLORS = ['#2952a3', '#b5540a', '#3a6b35', '#8a6d00', '#7a3ab3']
+
+const METHOD_LABEL: Record<string, string> = {
+  linear_regression: 'Linear Regression',
+  sma_50: '50-day SMA',
+  sma_200: '200-day SMA',
+  sma_crossover_momentum: 'Crossover Momentum',
+}
 
 const HORIZON_TABS: { key: ForecastHorizonKey; label: string }[] = [
   { key: 'daily', label: 'Daily' },
@@ -72,6 +80,78 @@ export function buildMethodMarkers(methods: ReportTechnicalMethod[]): ForecastLi
         : { label: humanizeKey(m.method), date: m.projected_date, value, color: METHOD_COLORS[(i + 1) % METHOD_COLORS.length] }
     })
     .filter((m): m is ForecastLineChartMarker => m !== null)
+}
+
+export interface MethodCardData {
+  method: string
+  label: string
+  description: string
+  targetDate: string | null
+  formattedProjectedPrice: string | null
+  status: MetricStatus
+  reason: string | null
+}
+
+/**
+ * One card per deterministic method (Wave 3, I6): all four --
+ * linear_regression, sma_50, sma_200, sma_crossover_momentum -- shown
+ * side by side, parallel, never averaged into a single number.
+ *
+ * No % change or band is shown here (the master brief's card spec named
+ * both) because neither is on `ReportTechnicalMethod` -- unlike
+ * `ReportValuationMethod`, which already carries
+ * `upside_downside_percent`, the technical-forecast methods have no
+ * equivalent field, and no uncertainty range exists for a deterministic
+ * point estimate at all. Computing either from `projected_price` and
+ * `currentPrice` in TypeScript would be exactly the derived-statistic
+ * violation I2 forbids. See BACKLOG.md, "% change field for deterministic
+ * technical methods" and DECISIONS.md for this finding. Exported for
+ * unit testing.
+ */
+export function buildMethodCards(methods: ReportTechnicalMethod[]): MethodCardData[] {
+  return methods.map((m) => ({
+    method: m.method,
+    label: METHOD_LABEL[m.method] ?? humanizeKey(m.method),
+    description: m.description,
+    targetDate: m.projected_date,
+    formattedProjectedPrice: m.formatted_projected_price,
+    status: m.status,
+    reason: m.reason,
+  }))
+}
+
+function MethodCard({ card }: { card: MethodCardData }) {
+  return (
+    <div className="flex flex-col gap-1 rounded-md border border-[var(--color-border)] bg-[var(--color-surface)] p-3">
+      <span className="text-xs font-semibold text-[var(--color-text-muted)]" title={card.description}>
+        {card.label}
+      </span>
+      {card.status === 'calculated' ? (
+        <>
+          <span className="font-mono-nums text-lg font-semibold">{card.formattedProjectedPrice ?? '—'}</span>
+          <span className="text-[10px] text-[var(--color-text-faint)]">{formatDate(card.targetDate) ?? '—'}</span>
+        </>
+      ) : (
+        <span className="text-xs text-[var(--color-text-faint)]">{card.reason ?? 'Unavailable'}</span>
+      )}
+    </div>
+  )
+}
+
+/** All four deterministic methods, side by side -- never blended into
+ * one number (I6). Distinct visual unit from the chart above it, which
+ * only overlays the "other methods" toggle's markers when enabled;
+ * this row always shows every method regardless of that toggle. */
+function MethodCardRow({ methods }: { methods: ReportTechnicalMethod[] }) {
+  const cards = buildMethodCards(methods)
+  if (cards.length === 0) return null
+  return (
+    <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+      {cards.map((card) => (
+        <MethodCard key={card.method} card={card} />
+      ))}
+    </div>
+  )
 }
 
 /** True when the backend's own reason for having nothing to chart
@@ -257,6 +337,8 @@ function HorizonChart({
         </div>
       )}
 
+      <MethodCardRow methods={data.technical_methods} />
+
       {hasChart && !hasPrediction && (
         <p className="text-xs text-[var(--color-text-faint)]">
           No prediction available for this horizon{reason ? ` — ${reason}` : ''}.
@@ -300,9 +382,17 @@ export function ForecastSection({
   return (
     <section aria-labelledby="forecast-heading" className="flex flex-col gap-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <h2 id="forecast-heading" className="section-heading">
-          Price Trend &amp; Forecast
-        </h2>
+        <div className="flex items-center gap-2">
+          <h2 id="forecast-heading" className="section-heading">
+            Price Trend &amp; Forecast
+          </h2>
+          <span
+            className="rounded-full border border-[var(--color-border)] px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-[var(--color-text-faint)]"
+            title="This deterministic forecast has never been evaluated against what actually happened -- unlike the AI Forecast section, which tracks its own accuracy."
+          >
+            Not backtested
+          </span>
+        </div>
         {effectiveFormattedCurrentPrice ? (
           <div className="text-right">
             <div className="text-[10px] uppercase tracking-wide text-[var(--color-text-faint)]">Current</div>

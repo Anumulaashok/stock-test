@@ -1,6 +1,6 @@
 import { render, screen, fireEvent } from '@testing-library/react'
 import { describe, it, expect } from 'vitest'
-import { ForecastSection, allHistoricalPrices, buildMethodMarkers, predictedPrices } from './ForecastSection'
+import { ForecastSection, allHistoricalPrices, buildMethodCards, buildMethodMarkers, predictedPrices } from './ForecastSection'
 import type {
   ReportForecastSection,
   ReportHistoricalPricePoint,
@@ -141,6 +141,17 @@ describe('ForecastSection', () => {
   it('renders the chart as an svg image', () => {
     render(<ForecastSection forecast={forecastFixture()} />)
     expect(screen.getByRole('img', { name: /forecast price chart/i })).toBeInTheDocument()
+  })
+
+  it('always shows a "Not backtested" badge, regardless of horizon', () => {
+    render(<ForecastSection forecast={forecastFixture()} />)
+    expect(screen.getByText('Not backtested')).toBeInTheDocument()
+  })
+
+  it('shows a method card (including linear_regression) alongside the chart, parallel and never averaged', () => {
+    render(<ForecastSection forecast={forecastFixture()} />)
+    expect(screen.getByText('50-day SMA')).toBeInTheDocument()
+    expect(screen.getByText('$105.00')).toBeInTheDocument()
   })
 
   it('renders nothing when the forecast is unavailable', () => {
@@ -365,5 +376,38 @@ describe('buildMethodMarkers', () => {
       },
     ]
     expect(buildMethodMarkers(methods)).toEqual([])
+  })
+})
+
+describe('buildMethodCards', () => {
+  it('includes linear_regression (unlike buildMethodMarkers) with a humanized label, one card per method', () => {
+    const methods: ReportTechnicalMethod[] = [
+      { method: 'linear_regression', description: 'OLS trend.', projected_price: '100', projection_days: 5, horizon: 'daily', horizon_period: 5, projected_date: '2026-09-05', status: 'calculated', reason: null, formatted_projected_price: '$100.00' },
+      { method: 'sma_50', description: '50-day SMA.', projected_price: '95', projection_days: 5, horizon: 'daily', horizon_period: 5, projected_date: '2026-09-05', status: 'calculated', reason: null, formatted_projected_price: '$95.00' },
+      { method: 'sma_200', description: '200-day SMA.', projected_price: '90', projection_days: 5, horizon: 'daily', horizon_period: 5, projected_date: '2026-09-05', status: 'calculated', reason: null, formatted_projected_price: '$90.00' },
+      { method: 'sma_crossover_momentum', description: 'Momentum drift.', projected_price: '102', projection_days: 5, horizon: 'daily', horizon_period: 5, projected_date: '2026-09-05', status: 'calculated', reason: null, formatted_projected_price: '$102.00' },
+    ]
+    expect(buildMethodCards(methods)).toEqual([
+      { method: 'linear_regression', label: 'Linear Regression', description: 'OLS trend.', targetDate: '2026-09-05', formattedProjectedPrice: '$100.00', status: 'calculated', reason: null },
+      { method: 'sma_50', label: '50-day SMA', description: '50-day SMA.', targetDate: '2026-09-05', formattedProjectedPrice: '$95.00', status: 'calculated', reason: null },
+      { method: 'sma_200', label: '200-day SMA', description: '200-day SMA.', targetDate: '2026-09-05', formattedProjectedPrice: '$90.00', status: 'calculated', reason: null },
+      { method: 'sma_crossover_momentum', label: 'Crossover Momentum', description: 'Momentum drift.', targetDate: '2026-09-05', formattedProjectedPrice: '$102.00', status: 'calculated', reason: null },
+    ])
+  })
+
+  it('falls back to a humanized method name for an unrecognized method', () => {
+    const methods: ReportTechnicalMethod[] = [
+      { method: 'rate_of_change_momentum', description: '', projected_price: '100', projection_days: 5, horizon: 'daily', horizon_period: 5, projected_date: '2026-09-05', status: 'calculated', reason: null, formatted_projected_price: '$100.00' },
+    ]
+    expect(buildMethodCards(methods)[0].label).toBe('Rate Of Change Momentum')
+  })
+
+  it('carries the unavailable status and reason through, rather than a fabricated value', () => {
+    const methods: ReportTechnicalMethod[] = [
+      { method: 'sma_50', description: '', projected_price: null, projection_days: 5, horizon: 'daily', horizon_period: 5, projected_date: null, status: 'unavailable', reason: 'insufficient history', formatted_projected_price: null },
+    ]
+    expect(buildMethodCards(methods)).toEqual([
+      { method: 'sma_50', label: '50-day SMA', description: '', targetDate: null, formattedProjectedPrice: null, status: 'unavailable', reason: 'insufficient history' },
+    ])
   })
 })

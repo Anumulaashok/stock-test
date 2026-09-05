@@ -59,6 +59,20 @@ Operating mode: in-session, report-and-wait at wave boundaries, commit and push 
 - Eyeballed on new `/__dev/signal-card` fixture route (5 states). One near-miss: a screenshot appeared to show a bug (fallback content rendering when it shouldn't), but a direct DOM-content dump proved the component was correct throughout -- the screenshot was misread, not a defect. Recorded as a caution about trusting a single screenshot glance over ground truth when they'd disagree.
 - Verification floor: 283/283 vitest, `tsc -b` clean (one real type error caught and fixed: `toDisplayNumber` returns a formatted string, not a number -- needed a separate numeric parse for the bar-width calculation), `oxlint` clean, `vite build` clean, all 4 fixture routes confirmed absent from `dist/`.
 
+## Wave 3 (in progress)
+
+**Slice 1 — deterministic section, done, not yet committed.** Per explicit sequencing instruction (deterministic before ML, since it carries the permanent "not backtested" label):
+
+- `ForecastSection.tsx` gained a persistent "Not backtested" badge in its header (visible regardless of horizon tab) and a new 4-card row (`buildMethodCards`/`MethodCard`/`MethodCardRow`) showing all deterministic methods (`linear_regression`, `sma_50`, `sma_200`, `sma_crossover_momentum`) side by side, parallel, never averaged (I6) -- each card shows target date + projected value, or an honest unavailable+reason state.
+- **No % change, no band** on the cards -- neither exists on `ReportTechnicalMethod` (only `ReportValuationMethod` has an upside/downside percent); computing % change from two known prices in TS would still be a derived-statistic I2 violation. Filed in `BACKLOG.md`; logged in `DECISIONS.md`.
+- Confirmed `technical_methods` (not `price_trend`) is the right source for all 4 cards including `linear_regression` -- a separate backend computation from the chart's own dashed line, correctly left unmerged.
+- New fixture route `/__dev/forecast-section`, eyeballed (including tab switching) -- clean, one pre-existing (not-this-slice) minor visual overlap noted (an "other technical methods" marker sitting near the new edge-marker stub for the same SMA value) but not touched, out of scope.
+- Verification floor: 288/288 vitest, `tsc -b` clean, `oxlint` clean, `vite build` clean, all 6 fixture routes confirmed absent from `dist/`.
+
+**Not started:** the ML section (ensemble output, per-model contributions/weights, quality tier badging for the naive-only fallback, quantile bands + interval_coverage_80, drivers) -- next per the sequencing instruction. Analogs/news-impact already integrated in Wave 1, not duplicated.
+
+---
+
 **Wave 2 is now functionally complete** (D4 extraction, price chart + DMA/crossover/volume on Technical+Overview, resolved-prediction overlay, signal card). Regime bands, RS toggle, and the signal card's regime badge all correctly deferred, not fabricated. Score sparklines correctly unbuilt (D2/D11). Nothing in this wave committed yet beyond the earlier-pushed slice-1-fix commits.
 
 ## Blocked

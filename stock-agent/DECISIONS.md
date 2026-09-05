@@ -105,3 +105,23 @@ Append-only. Every judgment call that would previously have been a question gets
 **Chosen:** omitted the regime badge from `SignalCard.tsx`. Treated as grouped with "regime bands" and the RS toggle under the user's explicit "stay blocked, do not revisit" instruction for this session, since the underlying data source is the same ML-only field either way -- a single-value badge is a smaller ask than bands, but adding a new ML-forecast fetch to a tab that doesn't otherwise need one is still a real scope decision, not a free reshape of data already in hand.
 
 **What would reverse it:** an explicit decision that Overview should carry the ML forecast fetch (accepting that cost), or a backend change surfacing `regime` on `report` itself.
+
+---
+
+## 2026-09-05 — Wave 3 deterministic method cards: no % change, no band
+
+**Finding:** the master brief's method-card spec named "target date, projected value, % change, band" per card. `ReportTechnicalMethod` has no percent-change-from-current field (unlike `ReportValuationMethod`, which already has one) and no deterministic method has an uncertainty range at all -- that's exclusive to the ML system's quantile estimates.
+
+**Chosen:** shipped cards with target date + projected value + status/reason only. Omitted % change (computing it from `projected_price`/`current_price` in TS would be a derived-statistic I2 violation) and band (nothing to show, fabricating one would violate I1). Filed the % change gap in `BACKLOG.md`, proposing the same `upside_downside_percent` pattern `ReportValuationMethod` already uses.
+
+**Why:** same reasoning as the Wave 2 DMA/RS gaps -- conservative option is to ship what's real and log what isn't, never approximate the missing half client-side.
+
+**What would reverse it:** the backend proposal above landing; band would need a fundamentally different (probabilistic) deterministic method to ever apply, so there's no proposed shape for it.
+
+---
+
+## 2026-09-05 — Wave 3: all four technical_methods entries used for cards, not price_trend
+
+**Finding:** `technical_methods` (from `TechnicalForecast.methods`, `app/forecasting/service.py`) already contains all four deterministic methods -- `linear_regression`, `sma_50`, `sma_200`, `sma_crossover_momentum` -- as one flat list with its own status/reason per entry. This is a separate computation from `price_trend` (used for the chart's dashed line), which only carries the linear-regression series.
+
+**Chosen:** `buildMethodCards` reads `technical_methods` directly for all 4 cards, including `linear_regression` (unlike `buildMethodMarkers`, which excludes it from the chart overlay since `price_trend` already draws that one as the main dashed line). Two independent, correct uses of `linear_regression`'s two separate backend computations -- the chart's dashed line stays sourced from `price_trend`, the card stays sourced from `technical_methods`; neither was changed to match the other.

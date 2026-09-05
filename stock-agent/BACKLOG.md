@@ -78,6 +78,16 @@ Backend/infra proposals raised instead of building a frontend workaround, per `d
 
 ---
 
+## % change field for deterministic technical methods (Wave 3 method cards)
+
+**Needed:** the Wave 3 method-card spec calls for "target date, projected value, % change, band" per deterministic method. `ReportTechnicalMethod` carries `projected_price`/`formatted_projected_price` but no percent-change-from-current field -- unlike `ReportValuationMethod`, which already has `upside_downside_percent`/`formatted_upside_downside` for the same kind of "how far is this from today" figure.
+
+**Proposed shape:** add `upside_downside_percent: Decimal | None` and `formatted_upside_downside: str | None` to `ReportTechnicalMethod`, computed server-side from `projected_price` and the horizon's current price, mirroring the existing valuation-method pattern exactly.
+
+**Why not built into the frontend:** computing `(projected - current) / current` in TypeScript from two already-known prices is still a derived statistic reserved for the backend (I2) -- it's the same class of violation as computing a moving average, just simpler arithmetic. No uncertainty band exists for any deterministic method at all (there's no per-method equivalent of the ML system's quantile estimates), so "band" is omitted entirely rather than fabricated; there is no proposed shape for that half since none of the underlying methods are probabilistic.
+
+---
+
 ## Not backlog — resolved
 
 **Alerts backend** (originally Wave 4/5 backend request) is **authorized** under `docs/AUTONOMY.md` D10 (additive tables only, `app/portfolio/service.py` pattern, evaluate-on-read). This is Wave 5 build scope, not a backlog proposal.

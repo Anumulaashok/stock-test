@@ -395,3 +395,107 @@ class AppSettingRow(Base):
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=_utcnow, onupdate=_utcnow, nullable=False
     )
+
+
+class ForecastPredictionRow(Base):
+    """One ML forecast for one (ticker, horizon), persisted at
+    prediction time -- the basis for measuring model accuracy later
+    (`app.forecasting.ml.validation`, spec section 21). Deliberately a
+    new table rather than an extension of `ForecastSnapshotRow`: that
+    table's grain is one deterministic-method point-price per period
+    index, not a distributional ensemble forecast per horizon, and
+    overloading it would risk the existing `ForecastAccuracyService`
+    read path. `actual_return`/`actual_price`/etc. start `NULL` and are
+    filled in later by `app.forecasting.ml.evaluation` once the horizon
+    has actually elapsed."""
+
+    __tablename__ = "forecast_predictions"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_new_id)
+    ticker: Mapped[str] = mapped_column(String(32), index=True, nullable=False)
+    prediction_timestamp: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True, nullable=False)
+    data_timestamp: Mapped[date_type] = mapped_column(Date, nullable=False)
+    horizon: Mapped[str] = mapped_column(String(8), index=True, nullable=False)  # 14D|1M|3M|1Y
+    model_version: Mapped[str] = mapped_column(String(32), nullable=False)
+    feature_version: Mapped[str] = mapped_column(String(32), nullable=False)
+    news_feature_version: Mapped[str] = mapped_column(String(32), nullable=False)
+    current_price: Mapped[Decimal] = mapped_column(Numeric(20, 6), nullable=False)
+    predicted_return: Mapped[Decimal] = mapped_column(Numeric(10, 6), nullable=False)
+    predicted_price: Mapped[Decimal] = mapped_column(Numeric(20, 6), nullable=False)
+    p10: Mapped[Decimal | None] = mapped_column(Numeric(10, 6), nullable=True)
+    p25: Mapped[Decimal | None] = mapped_column(Numeric(10, 6), nullable=True)
+    p50: Mapped[Decimal | None] = mapped_column(Numeric(10, 6), nullable=True)
+    p75: Mapped[Decimal | None] = mapped_column(Numeric(10, 6), nullable=True)
+    p90: Mapped[Decimal | None] = mapped_column(Numeric(10, 6), nullable=True)
+    probability_positive: Mapped[Decimal | None] = mapped_column(Numeric(6, 4), nullable=True)
+    regime: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    forecast_quality: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    metadata_json: Mapped[str] = mapped_column(Text, nullable=False)  # model_agreement, drivers, data_quality
+    target_date: Mapped[date_type] = mapped_column(Date, index=True, nullable=False)
+    actual_return: Mapped[Decimal | None] = mapped_column(Numeric(10, 6), nullable=True)
+    actual_price: Mapped[Decimal | None] = mapped_column(Numeric(20, 6), nullable=True)
+    absolute_error: Mapped[Decimal | None] = mapped_column(Numeric(10, 6), nullable=True)
+    direction_correct: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
+    within_prediction_interval: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
+    evaluated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow, nullable=False)
+
+
+class ForecastModelPerformanceRow(Base):
+    """Aggregated out-of-sample performance for one (model, horizon,
+    scope) -- written by walk-forward validation
+    (`app.forecasting.ml.validation`) and by periodic re-evaluation of
+    `ForecastPredictionRow` outcomes. `scope`/`scope_value` let one table
+    serve ticker-level, sector-level, regime-level, or global rows
+    (spec section 22) without a wide sparse-column schema; `scope="ALL"`
+    is the global row for a given model+horizon."""
+
+    __tablename__ = "forecast_model_performance"
+    __table_args__ = (
+        UniqueConstraint(
+            "model_name", "model_version", "horizon", "scope", "scope_value",
+            name="uq_forecast_model_performance_scope",
+        ),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_new_id)
+    model_name: Mapped[str] = mapped_column(String(64), nullable=False)
+    model_version: Mapped[str] = mapped_column(String(32), nullable=False)
+    horizon: Mapped[str] = mapped_column(String(8), index=True, nullable=False)
+    scope: Mapped[str] = mapped_column(String(16), nullable=False)  # ALL|TICKER|SECTOR|REGIME
+    scope_value: Mapped[str] = mapped_column(String(64), nullable=False)  # e.g. "ALL", "RELIANCE", "OVEREXTENDED"
+    sample_size: Mapped[int] = mapped_column(Integer, nullable=False)
+    mae: Mapped[Decimal | None] = mapped_column(Numeric(10, 6), nullable=True)
+    rmse: Mapped[Decimal | None] = mapped_column(Numeric(10, 6), nullable=True)
+    directional_accuracy: Mapped[Decimal | None] = mapped_column(Numeric(6, 4), nullable=True)
+    brier_score: Mapped[Decimal | None] = mapped_column(Numeric(6, 4), nullable=True)
+    interval_coverage_80: Mapped[Decimal | None] = mapped_column(Numeric(6, 4), nullable=True)
+    computed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow, onupdate=_utcnow, nullable=False)
+
+
+class NewsEventRow(Base):
+    """One classified news item (spec section 8), accumulated forward
+    from whichever `app.news.client.NewsClient` results are fetched
+    during ticker research -- see `app.forecasting.ml.news.ingestion`.
+    Distinct from `RawResearchDataRow` (verbatim Finnhub research
+    capture) and unrelated to `app.news.client.NewsArticle` (the
+    transient search-result shape, never persisted itself)."""
+
+    __tablename__ = "news_events"
+    __table_args__ = (UniqueConstraint("ticker", "published_at", "headline", name="uq_news_event_identity"),)
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_new_id)
+    ticker: Mapped[str] = mapped_column(String(32), index=True, nullable=False)
+    company: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    published_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True, nullable=False)
+    source: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    headline: Mapped[str] = mapped_column(Text, nullable=False)
+    summary: Mapped[str | None] = mapped_column(Text, nullable=True)
+    url: Mapped[str | None] = mapped_column(Text, nullable=True)
+    event_type: Mapped[str] = mapped_column(String(32), nullable=False)
+    sentiment: Mapped[str] = mapped_column(String(16), nullable=False)
+    sentiment_score: Mapped[Decimal] = mapped_column(Numeric(6, 4), nullable=False)
+    importance_score: Mapped[Decimal] = mapped_column(Numeric(6, 4), nullable=False)
+    novelty_score: Mapped[Decimal] = mapped_column(Numeric(6, 4), nullable=False)
+    market_timing: Mapped[str] = mapped_column(String(16), nullable=False)
+    ingested_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow, nullable=False)

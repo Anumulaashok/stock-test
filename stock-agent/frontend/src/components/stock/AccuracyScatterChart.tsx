@@ -1,5 +1,7 @@
 import { useEffect, useRef } from 'react'
 import { Chart, Legend, LinearScale, PointElement, ScatterController, Tooltip } from 'chart.js'
+import { readChartColors } from '../../lib/chartTheme'
+import { useTheme } from '../../theme/ThemeContext'
 
 Chart.register(ScatterController, LinearScale, PointElement, Tooltip, Legend)
 
@@ -51,10 +53,12 @@ export function partitionByDirection(points: AccuracyScatterPoint[]): {
 export function AccuracyScatterChart({ points }: { points: AccuracyScatterPoint[] }) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const chartRef = useRef<Chart | null>(null)
+  const { theme } = useTheme()
 
   useEffect(() => {
     const canvas = canvasRef.current
     if (!canvas) return
+    const colors = readChartColors()
 
     const allValues = points.flatMap((p) => [p.predictedReturn, p.actualReturn])
     const rawExtent = allValues.length > 0 ? Math.max(...allValues.map(Math.abs)) : 0.05
@@ -75,7 +79,7 @@ export function AccuracyScatterChart({ points }: { points: AccuracyScatterPoint[
             label: 'Directionally correct',
             data: toXY(correct),
             backgroundColor: CORRECT_COLOR,
-            borderColor: 'rgba(255, 255, 255, 0.5)',
+            borderColor: colors.pointBorder,
             borderWidth: 1,
             pointStyle: 'circle',
             pointRadius: 4,
@@ -85,7 +89,7 @@ export function AccuracyScatterChart({ points }: { points: AccuracyScatterPoint[
             label: 'Directionally wrong',
             data: toXY(incorrect),
             backgroundColor: INCORRECT_COLOR,
-            borderColor: 'rgba(255, 255, 255, 0.5)',
+            borderColor: colors.pointBorder,
             borderWidth: 1,
             pointStyle: 'triangle',
             pointRadius: 5,
@@ -102,7 +106,7 @@ export function AccuracyScatterChart({ points }: { points: AccuracyScatterPoint[
                   label: 'Unclassified',
                   data: toXY(unclassified),
                   backgroundColor: NEUTRAL_COLOR,
-                  borderColor: '#eef1fb',
+                  borderColor: colors.pointBorder,
                   borderWidth: 1.5,
                   pointStyle: 'rect',
                   pointRadius: 5,
@@ -117,7 +121,7 @@ export function AccuracyScatterChart({ points }: { points: AccuracyScatterPoint[
         maintainAspectRatio: false,
         aspectRatio: 1,
         plugins: {
-          legend: { position: 'bottom', labels: { boxWidth: 10, font: { size: 10 }, usePointStyle: true } },
+          legend: { position: 'bottom', labels: { boxWidth: 10, font: { size: 10 }, usePointStyle: true, color: colors.tick } },
           tooltip: {
             callbacks: {
               label: (ctx) => {
@@ -133,16 +137,16 @@ export function AccuracyScatterChart({ points }: { points: AccuracyScatterPoint[
             min: -extent,
             max: extent,
             title: { display: true, text: 'Predicted return', font: { size: 10 } },
-            ticks: { callback: (v) => `${(Number(v) * 100).toFixed(0)}%`, font: { size: 9 } },
-            grid: { color: 'rgba(148, 163, 184, 0.12)' },
+            ticks: { callback: (v) => `${(Number(v) * 100).toFixed(0)}%`, font: { size: 9 }, color: colors.tick },
+            grid: { color: colors.grid },
           },
           y: {
             type: 'linear',
             min: -extent,
             max: extent,
             title: { display: true, text: 'Actual return', font: { size: 10 } },
-            ticks: { callback: (v) => `${(Number(v) * 100).toFixed(0)}%`, font: { size: 9 } },
-            grid: { color: 'rgba(148, 163, 184, 0.12)' },
+            ticks: { callback: (v) => `${(Number(v) * 100).toFixed(0)}%`, font: { size: 9 }, color: colors.tick },
+            grid: { color: colors.grid },
           },
         },
       },
@@ -167,7 +171,7 @@ export function AccuracyScatterChart({ points }: { points: AccuracyScatterPoint[
             }
 
             ctx.save()
-            ctx.strokeStyle = 'rgba(148, 163, 184, 0.55)'
+            ctx.strokeStyle = colors.quadrantLine
             ctx.setLineDash([4, 4])
             ctx.beginPath()
             ctx.moveTo(scales.x.getPixelForValue(-extent), scales.y.getPixelForValue(-extent))
@@ -183,7 +187,7 @@ export function AccuracyScatterChart({ points }: { points: AccuracyScatterPoint[
       chartRef.current?.destroy()
       chartRef.current = null
     }
-  }, [points])
+  }, [points, theme])
 
   return (
     <div style={{ height: 220 }} role="img" aria-label="Predicted versus actual return scatter">

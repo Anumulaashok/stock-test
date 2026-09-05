@@ -2,6 +2,7 @@ import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../auth/AuthContext'
 import { Icon, ICON } from '../components/ui/Icon'
 import { SearchBar } from '../components/SearchBar'
+import { ThemeToggle } from '../components/ThemeToggle'
 import { OPEN_COMMAND_PALETTE_EVENT } from '../features/commandPalette/CommandPalette'
 import { OPEN_MOBILE_NAV_EVENT } from './MobileNavDrawer'
 import { paths } from '../routes/paths'
@@ -36,6 +37,7 @@ export function TopBar() {
             <span aria-hidden="true">⌘K</span>
             <span className="sr-only">Open command palette</span>
           </button>
+          <ThemeToggle />
           <AlertsBell />
           {status === 'authenticated' && (
             <>

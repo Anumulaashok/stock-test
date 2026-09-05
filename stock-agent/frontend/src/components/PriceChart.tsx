@@ -1,4 +1,6 @@
 import { useEffect, useRef } from 'react'
+import { readChartColors } from '../lib/chartTheme'
+import { useTheme } from '../theme/ThemeContext'
 import {
   BarController,
   BarElement,
@@ -146,10 +148,12 @@ export function PriceChart({
   const chartRef = useRef<Chart | null>(null)
   const volumeCanvasRef = useRef<HTMLCanvasElement>(null)
   const volumeChartRef = useRef<Chart | null>(null)
+  const { theme } = useTheme()
 
   useEffect(() => {
     const canvas = canvasRef.current
     if (!canvas) return
+    const colors = readChartColors()
 
     const allDates = Array.from(
       new Set([
@@ -185,7 +189,7 @@ export function PriceChart({
         label: 'High estimate',
         data: allDates.map((d) => bandHighByDate.get(d) ?? null),
         borderColor: 'transparent',
-        backgroundColor: 'rgba(41, 82, 163, 0.12)',
+        backgroundColor: colors.bandFill,
         pointRadius: 0,
         borderWidth: 0,
         fill: '-1',
@@ -197,8 +201,8 @@ export function PriceChart({
       datasets.push({
         label: 'Historical',
         data: allDates.map((d) => historicalByDate.get(d) ?? null),
-        borderColor: '#9ca3af',
-        backgroundColor: '#9ca3af',
+        borderColor: colors.historical,
+        backgroundColor: colors.historical,
         pointRadius: 0,
         pointHoverRadius: 3,
         borderWidth: 2,
@@ -210,8 +214,8 @@ export function PriceChart({
       datasets.push({
         label: 'Predicted',
         data: allDates.map((d) => predictedByDate.get(d) ?? null),
-        borderColor: '#2952a3',
-        backgroundColor: 'rgba(41, 82, 163, 0.15)',
+        borderColor: colors.predicted,
+        backgroundColor: colors.predictedFill,
         borderDash: [6, 4],
         pointRadius: 0,
         pointHoverRadius: 3,
@@ -254,9 +258,10 @@ export function PriceChart({
           },
         },
         scales: {
-          x: { grid: { display: false }, ticks: { maxRotation: 0, autoSkip: true, maxTicksLimit: 8 } },
+          x: { grid: { display: false }, ticks: { color: colors.tick, maxRotation: 0, autoSkip: true, maxTicksLimit: 8 } },
           y: {
-            grid: { color: 'rgba(148, 163, 184, 0.15)' },
+            grid: { color: colors.grid },
+            ticks: { color: colors.tick },
             afterDataLimits: (scale) => {
               for (const ref of referenceLines) {
                 if (ref.value < scale.min) scale.min = ref.value
@@ -334,13 +339,14 @@ export function PriceChart({
       chartRef.current?.destroy()
       chartRef.current = null
     }
-  }, [historical, predicted, markers, referenceLines, edgeMarkers, band, volume])
+  }, [historical, predicted, markers, referenceLines, edgeMarkers, band, volume, theme])
 
   useEffect(() => {
     const canvas = volumeCanvasRef.current
     volumeChartRef.current?.destroy()
     volumeChartRef.current = null
     if (!canvas || volume.length === 0) return
+    const colors = readChartColors()
 
     const allDates = Array.from(new Set(volume.map((v) => v.date))).sort()
     const volumeByDate = new Map(volume.map((v) => [v.date, v.value]))
@@ -353,7 +359,7 @@ export function PriceChart({
           {
             label: 'Volume',
             data: allDates.map((d) => volumeByDate.get(d) ?? null),
-            backgroundColor: 'rgba(148, 163, 184, 0.45)',
+            backgroundColor: colors.volumeBar,
           },
         ],
       },
@@ -372,8 +378,8 @@ export function PriceChart({
           },
         },
         scales: {
-          x: { grid: { display: false }, ticks: { maxRotation: 0, autoSkip: true, maxTicksLimit: 8 } },
-          y: { grid: { color: 'rgba(148, 163, 184, 0.1)' }, ticks: { maxTicksLimit: 3 } },
+          x: { grid: { display: false }, ticks: { color: colors.tick, maxRotation: 0, autoSkip: true, maxTicksLimit: 8 } },
+          y: { grid: { color: colors.grid }, ticks: { color: colors.tick, maxTicksLimit: 3 } },
         },
       },
     })
@@ -382,7 +388,7 @@ export function PriceChart({
       volumeChartRef.current?.destroy()
       volumeChartRef.current = null
     }
-  }, [volume])
+  }, [volume, theme])
 
   return (
     <div className="flex flex-col gap-1">

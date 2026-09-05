@@ -86,6 +86,13 @@ const router = createBrowserRouter(
             return { Component: PortfolioAnalyticsFixturePage }
           },
         },
+        {
+          path: '__dev/empty-states',
+          lazy: async () => {
+            const { EmptyStatesFixturePage } = await import('./dev/EmptyStatesFixturePage')
+            return { Component: EmptyStatesFixturePage }
+          },
+        },
       ]
     : routes,
 )

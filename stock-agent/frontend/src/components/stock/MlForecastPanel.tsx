@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { fetchMlForecast } from '../../api/mlForecast'
+import { fetchMlForecast, fetchMlForecastHistory } from '../../api/mlForecast'
 import { useAsync } from '../../hooks/useAsync'
 import { AsyncSection } from '../ui/AsyncSection'
 import { formatCurrency, humanizeKey } from '../../lib/format'
@@ -8,11 +8,15 @@ import {
   PriceChart,
   type ForecastChartPoint,
   type ForecastLineChartBandPoint,
+  type ForecastLineChartMarker,
 } from '../PriceChart'
 import { NewsImpactPanel } from './NewsImpactPanel'
 import { AnalogPanel } from './AnalogPanel'
 import type { ReportHistoricalPricePoint } from '../../types/backend'
-import type { MlForecastResult, MlHorizonForecast, MlHorizonKey } from '../../types/mlForecast'
+import type { MlForecastPrediction, MlForecastResult, MlHorizonForecast, MlHorizonKey } from '../../types/mlForecast'
+
+const RESOLVED_PREDICTION_HISTORY_LIMIT = 200
+const RESOLVED_PREDICTION_COLOR = '#c78a1f'
 
 const HORIZON_ORDER: { key: MlHorizonKey; label: string }[] = [
   { key: '14D', label: '14D' },
@@ -60,6 +64,20 @@ function useChartSeries(result: MlForecastResult, historicalPoints: ReportHistor
 
     return { historical, predicted, band }
   }, [result, historicalPoints])
+}
+
+/** One marker per already-resolved prediction (actual_return !== null),
+ * placed at the model's predicted price on the date it resolved --
+ * plotted against the real historical close already on the same chart,
+ * so a viewer can see how close a past prediction actually was. Pending
+ * predictions (actual_return === null) are excluded: there's nothing to
+ * compare them against yet. This is Wave 1's deferred secondary view,
+ * folded into the price chart rather than built as a third chart (per
+ * the master brief). Exported for unit testing. */
+export function resolvedPredictionMarkers(predictions: MlForecastPrediction[]): ForecastLineChartMarker[] {
+  return predictions
+    .filter((p) => p.actual_return !== null)
+    .map((p) => ({ label: 'Past prediction', date: p.target_date, value: p.predicted_price, color: RESOLVED_PREDICTION_COLOR }))
 }
 
 function HorizonChip({ forecast, active, onSelect }: { forecast: MlHorizonForecast; active: boolean; onSelect: () => void }) {
@@ -157,15 +175,47 @@ function DetailsPanel({ forecast }: { forecast: MlHorizonForecast }) {
   )
 }
 
-function ForecastContent({ result, historicalPoints }: { result: MlForecastResult; historicalPoints: ReportHistoricalPricePoint[] }) {
+function ForecastContent({
+  ticker,
+  result,
+  historicalPoints,
+}: {
+  ticker: string
+  result: MlForecastResult
+  historicalPoints: ReportHistoricalPricePoint[]
+}) {
   const { historical, predicted, band } = useChartSeries(result, historicalPoints)
   const [selected, setSelected] = useState<MlHorizonKey>('14D')
   const [showDetails, setShowDetails] = useState(false)
   const selectedForecast = result.horizons[selected]
 
+  // Same GET .../history endpoint the accuracy panel already calls, for
+  // the currently selected horizon -- a local DB read, not a metered
+  // provider call (G9). Not embedded in `result` (MlForecastResult
+  // carries no prediction history), so this is a genuinely new fetch,
+  // not a redundant one (G5).
+  const historyState = useAsync(() => fetchMlForecastHistory(ticker, selected, RESOLVED_PREDICTION_HISTORY_LIMIT), [
+    ticker,
+    selected,
+  ])
+  const resolvedMarkers =
+    historyState.status === 'success' ? resolvedPredictionMarkers(historyState.data.predictions) : []
+
   return (
     <div className="flex flex-col gap-3">
-      <PriceChart historical={historical} predicted={predicted} band={band} ariaLabel="AI forecast price chart" />
+      <PriceChart
+        historical={historical}
+        predicted={predicted}
+        band={band}
+        markers={resolvedMarkers}
+        ariaLabel="AI forecast price chart"
+      />
+      {resolvedMarkers.length > 0 && (
+        <p className="support-text text-xs">
+          Amber markers show this model's past predicted price for {selected} forecasts that have since resolved --
+          compare against the real price line above to see how close each one was.
+        </p>
+      )}
 
       <div className="grid grid-cols-4 gap-2">
         {HORIZON_ORDER.map(({ key }) => {
@@ -215,7 +265,7 @@ export function MlForecastPanel({ ticker, historicalPrices }: { ticker: string; 
     <div className="flex flex-col gap-3">
       <h3 className="text-base font-semibold">AI Forecast</h3>
       <AsyncSection state={state} onRetry={state.reload} errorTitle="Could not load AI forecast">
-        {(result) => <ForecastContent result={result} historicalPoints={historicalPrices} />}
+        {(result) => <ForecastContent ticker={ticker} result={result} historicalPoints={historicalPrices} />}
       </AsyncSection>
     </div>
   )

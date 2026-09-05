@@ -1,6 +1,8 @@
 import { HorizonPanel } from '../components/stock/MlAccuracyPanel'
 import { NewsImpactPanel } from '../components/stock/NewsImpactPanel'
 import { AnalogPanel } from '../components/stock/AnalogPanel'
+import { resolvedPredictionMarkers } from '../components/stock/MlForecastPanel'
+import { PriceChart } from '../components/PriceChart'
 import type {
   MlAccuracyHorizonStats,
   MlForecastHistoryResponse,
@@ -254,6 +256,67 @@ export function MlPanelsFixturePage() {
 
       <Section title="Analogs -- unreliable (n=4), mean/median diverging sharply">
         <AnalogPanel analog={ANALOG_UNRELIABLE} horizonLabel="1Y" />
+      </Section>
+
+      <Section title="Price chart -- resolved-prediction overlay (Wave 2, amber markers)">
+        <PriceChart
+          historical={[
+            { date: '2026-07-20', value: 92 },
+            { date: '2026-07-27', value: 94 },
+            { date: '2026-08-03', value: 91 },
+            { date: '2026-08-10', value: 96 },
+            { date: '2026-08-14', value: 100 },
+          ]}
+          predicted={[
+            { date: '2026-08-14', value: 100 },
+            { date: '2026-08-28', value: 104 },
+          ]}
+          band={[{ date: '2026-08-28', low: 99, high: 109 }]}
+          markers={resolvedPredictionMarkers([
+            {
+              prediction_timestamp: '2026-07-13T09:00:00+00:00',
+              horizon: '14D',
+              predicted_return: 0.02,
+              predicted_price: 93.5,
+              target_date: '2026-07-27',
+              actual_return: 0.015,
+              actual_price: 94,
+              direction_correct: true,
+              forecast_quality: 'HIGH',
+              model_version: 'v1',
+            },
+            {
+              prediction_timestamp: '2026-07-27T09:00:00+00:00',
+              horizon: '14D',
+              predicted_return: -0.01,
+              predicted_price: 93,
+              target_date: '2026-08-10',
+              actual_return: 0.02,
+              actual_price: 96,
+              direction_correct: false,
+              forecast_quality: 'MEDIUM',
+              model_version: 'v1',
+            },
+            {
+              prediction_timestamp: '2026-08-10T09:00:00+00:00',
+              horizon: '14D',
+              predicted_return: 0.01,
+              predicted_price: 97,
+              target_date: '2026-08-28',
+              actual_return: null,
+              actual_price: null,
+              direction_correct: null,
+              forecast_quality: 'HIGH',
+              model_version: 'v1',
+            },
+          ])}
+          ariaLabel="AI forecast price chart"
+        />
+        <p className="support-text mt-1 text-xs">
+          Two resolved predictions (amber dots at Jul 27 and Aug 10) plus one pending (correctly excluded -- no marker
+          at Aug 28). Judge: are the amber dots distinguishable from the gray historical line and the blue predicted/
+          band region at a glance?
+        </p>
       </Section>
     </main>
   )

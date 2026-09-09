@@ -1,22 +1,27 @@
 @import "tailwindcss";
 
-/* Design tokens for the app's "Intelligence" dark quantum aesthetic --
-   the same tokens the Intelligence dashboard introduced, now promoted
-   to the app-wide default so every page (Research, Dashboard, Auth)
-   shares one design system. Every shared primitive below (surface-card,
-   btn-primary, input-field, section-heading, ...) reads exclusively
-   from these --color-* variables, so no other component needed to
-   change for this -- only the token values did. */
+/* Design tokens for the app's "StockLens" dark terminal aesthetic --
+   flat near-black surfaces, hairline borders, JetBrains Mono for
+   labels/figures -- promoted to the app-wide default so every page
+   (Research, Dashboard, Auth) shares one design system. Every shared
+   primitive below (surface-card, btn-primary, input-field,
+   section-heading, ...) reads exclusively from these --color-*
+   variables, so no other component needed to change for this -- only
+   the token values did.
+   Status colors are deliberately NOT monochrome like the source
+   mockup: positive/negative/neutral keep distinct green/red/yellow
+   hues (below) for at-a-glance scanability, never color-only (every
+   use pairs with a label/icon per §12). */
 :root {
-  --color-bg: #060a17;
-  --color-bg-subtle: #0a0f22;
-  --color-surface: #0d1428;
-  --color-surface-raised: #111b36;
-  --color-border: #1c2847;
-  --color-border-strong: #2b3c67;
-  --color-text: #eef1fb;
-  --color-text-muted: #9aa5c7;
-  --color-text-faint: #64709a;
+  --color-bg: #0d0d0d;
+  --color-bg-subtle: #101011;
+  --color-surface: #141415;
+  --color-surface-raised: #191a1b;
+  --color-border: #1e1f21;
+  --color-border-strong: #34363a;
+  --color-text: #f4f5f5;
+  --color-text-muted: #a3a6a8;
+  --color-text-faint: #6d7072;
   --color-accent: #5b8cff;
   --color-accent-strong: #7ea2ff;
   --color-accent-soft: #16224a;
@@ -29,9 +34,9 @@
   --color-status-positive: #35d29a;
   --color-status-negative: #ff6b6b;
 
-  /* Extra accents the Intelligence page's decorative markup (hero glow,
-     sidebar crystal) uses -- not part of the shared primitive contract,
-     but global now so any page can draw on them consistently. */
+  /* Extra accents some pages' decorative markup (hero glow, sidebar
+     crystal) uses -- not part of the shared primitive contract, but
+     global now so any page can draw on them consistently. */
   --intel-teal: #22e0c8;
   --intel-violet: #8a7bff;
 
@@ -136,11 +141,7 @@ html[data-theme='light'] {
 body {
   margin: 0;
   min-height: 100vh;
-  background:
-    radial-gradient(1200px 600px at 12% -10%, color-mix(in srgb, var(--intel-violet) 10%, transparent), transparent 60%),
-    radial-gradient(900px 500px at 100% 0%, color-mix(in srgb, var(--intel-teal) 8%, transparent), transparent 55%),
-    var(--color-bg);
-  background-attachment: fixed;
+  background: var(--color-bg);
   color: var(--color-text);
   font-family: var(--font-sans);
   -webkit-font-smoothing: antialiased;
@@ -172,7 +173,7 @@ body {
 .surface-card {
   background: var(--color-surface);
   border: 1px solid var(--color-border);
-  border-radius: var(--radius-xl);
+  border-radius: var(--radius-lg);
   box-shadow: var(--shadow-xs);
   transition: box-shadow 180ms var(--ease-out), border-color 180ms var(--ease-out), transform 180ms var(--ease-out);
 }
@@ -336,16 +337,13 @@ body {
   animation: fade-in-up 320ms var(--ease-out) both;
 }
 
-/* The dark "Intelligence" palette is the app-wide default (see the
-   :root tokens at the top of this file) -- `.app-shell-bg` is just the
-   background glow, layered on top of the same global tokens, applied
-   once on `AppShell`'s root rather than per-page. Not a separate theme. */
+/* The dark "StockLens" terminal palette is the app-wide default (see
+   the :root tokens at the top of this file) -- `.app-shell-bg` just
+   applies the flat background/text tokens once on `AppShell`'s root
+   rather than per-page. Not a separate theme. */
 .app-shell-bg {
   min-height: 100vh;
-  background:
-    radial-gradient(900px 480px at 8% -8%, color-mix(in srgb, var(--intel-violet) 14%, transparent), transparent 60%),
-    radial-gradient(700px 420px at 100% 0%, color-mix(in srgb, var(--intel-teal) 10%, transparent), transparent 55%),
-    var(--color-bg);
+  background: var(--color-bg);
   color: var(--color-text);
 }
 

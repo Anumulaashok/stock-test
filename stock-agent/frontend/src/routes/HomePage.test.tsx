@@ -34,7 +34,9 @@ describe('HomePage', () => {
     expect(screen.getByText('Top Opportunities')).toBeInTheDocument()
     expect(screen.getByText('Recent Research')).toBeInTheDocument()
     expect(screen.getByText('Watchlist')).toBeInTheDocument()
-    // WatchlistSummary renders an anonymous "Sign in" prompt.
-    expect(await screen.findByText(/Sign in/)).toBeInTheDocument()
+    expect(screen.getByText('Portfolio Snapshot')).toBeInTheDocument()
+    // WatchlistSummary and PortfolioSnapshot each render their own
+    // anonymous "Sign in" prompt -- two matches is correct here.
+    expect((await screen.findAllByText(/Sign in/)).length).toBe(2)
   })
 })

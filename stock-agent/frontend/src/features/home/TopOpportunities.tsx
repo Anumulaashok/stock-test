@@ -4,7 +4,8 @@ import { AsyncSection } from '../../components/ui/AsyncSection'
 import { fetchMarketOpportunity } from '../../api/sectors'
 import { paths } from '../../routes/paths'
 import { toDisplayNumber } from '../../lib/format'
-import type { SectorStockSummary, SectorSummary } from '../../types/backend'
+import { toneFromBand, TONE_CLASS } from '../../lib/signals'
+import type { ScoreBand, SectorStockSummary, SectorSummary } from '../../types/backend'
 
 /** Top sectors + their best-scoring constituents from `GET
  * /api/v1/sectors` -- the backend already ranks `sectors` and each
@@ -25,6 +26,7 @@ function score(value: string | null): string {
 }
 
 function StockChip({ stock }: { stock: SectorStockSummary }) {
+  const tone = toneFromBand(stock.status === 'calculated' ? ((stock.band as ScoreBand | null) ?? null) : null)
   return (
     <Link
       to={paths.stock(stock.ticker)}
@@ -32,7 +34,9 @@ function StockChip({ stock }: { stock: SectorStockSummary }) {
     >
       <div className="flex items-center justify-between gap-2">
         <span className="text-[13px] font-semibold">{stock.ticker}</span>
-        <span className="metric-value text-base">{stock.status === 'calculated' ? score(stock.overall_score) : '—'}</span>
+        <span className={`metric-value text-base ${TONE_CLASS[tone]}`}>
+          {stock.status === 'calculated' ? score(stock.overall_score) : '—'}
+        </span>
       </div>
       <span className="truncate text-[11px] text-[var(--color-text-faint)]">{stock.company_name}</span>
     </Link>

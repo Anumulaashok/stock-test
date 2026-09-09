@@ -15,7 +15,7 @@ export function NavLinks({ variant, onNavigate }: { variant: 'full' | 'icon'; on
   const showLabel = variant === 'full'
 
   return (
-    <nav className={`flex flex-col gap-0.5 ${variant === 'icon' ? 'items-center' : ''}`}>
+    <nav className={`flex flex-col gap-px ${variant === 'icon' ? 'w-full items-center' : 'w-full'}`}>
       {NAV_ITEMS.map((item) => {
         if (item.requiresAuth && status !== 'authenticated') {
           return (
@@ -23,8 +23,8 @@ export function NavLinks({ variant, onNavigate }: { variant: 'full' | 'icon'; on
               key={item.label}
               title="Sign in required"
               aria-disabled="true"
-              className={`flex cursor-not-allowed items-center gap-2.5 rounded-[var(--radius-md)] px-3 py-2 text-left text-[13px] font-medium text-[var(--color-text-faint)]/60 ${
-                variant === 'icon' ? 'justify-center px-2.5' : ''
+              className={`flex cursor-not-allowed items-center gap-2.5 rounded-[var(--radius-md)] border-l-2 border-transparent px-2.5 py-2 text-left text-[13px] font-medium text-[var(--color-text-faint)]/60 ${
+                variant === 'icon' ? 'justify-center' : ''
               }`}
             >
               <Icon path={item.icon} className="h-4 w-4 shrink-0" />
@@ -41,17 +41,17 @@ export function NavLinks({ variant, onNavigate }: { variant: 'full' | 'icon'; on
             onClick={onNavigate}
             title={variant === 'icon' ? item.label : undefined}
             className={({ isActive }) =>
-              `flex items-center gap-2.5 rounded-[var(--radius-md)] px-3 py-2 text-left text-[13px] font-medium transition-colors ${
-                variant === 'icon' ? 'justify-center px-2.5' : ''
+              `flex items-center gap-2.5 rounded-[var(--radius-md)] border-l-2 px-2.5 py-2 text-left text-[13px] font-medium transition-colors ${
+                variant === 'icon' ? 'justify-center' : ''
               } ${
                 isActive
-                  ? 'bg-[var(--color-accent-soft)] text-[var(--color-text)]'
-                  : 'text-[var(--color-text-muted)] hover:bg-[var(--color-surface)] hover:text-[var(--color-text)]'
+                  ? 'border-[var(--color-accent)] bg-[var(--color-surface)] text-[var(--color-text)]'
+                  : 'border-transparent text-[var(--color-text-muted)] hover:bg-[var(--color-surface)] hover:text-[var(--color-text)]'
               }`
             }
           >
             <Icon path={item.icon} className="h-4 w-4 shrink-0" />
-            {showLabel && <span className="flex-1">{item.label}</span>}
+            {showLabel && <span className="flex-1 truncate">{item.label}</span>}
           </NavLink>
         )
       })}
@@ -60,8 +60,8 @@ export function NavLinks({ variant, onNavigate }: { variant: 'full' | 'icon'; on
           key={label}
           title="Coming soon"
           aria-disabled="true"
-          className={`flex cursor-not-allowed items-center gap-2.5 rounded-[var(--radius-md)] px-3 py-2 text-left text-[13px] font-medium text-[var(--color-text-faint)]/60 ${
-            variant === 'icon' ? 'justify-center px-2.5' : ''
+          className={`flex cursor-not-allowed items-center gap-2.5 rounded-[var(--radius-md)] border-l-2 border-transparent px-2.5 py-2 text-left text-[13px] font-medium text-[var(--color-text-faint)]/60 ${
+            variant === 'icon' ? 'justify-center' : ''
           }`}
         >
           <Icon path={ICON.lock} className="h-4 w-4 shrink-0" />
